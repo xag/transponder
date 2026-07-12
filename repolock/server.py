@@ -1,0 +1,138 @@
+"""Repo Lock — a local (stdio) MCP server for seeing and overriding the working-copy lock.
+
+The lock itself is taken and released automatically by a harness hook (for Claude Code:
+repolock/hooks/claude_code.py); a model never has to remember to call anything, which is the
+only reason the guarantee is worth having. This server is the *visibility and override* surface
+on top of it — the questions a session actually needs answered when it walks into a locked repo.
+
+Run (local only, extra `mcp`): `uv run python -m repolock.server`   (register in your client)
+
+A note on identity, deliberately conservative. A stdio MCP server has no reliable way to learn
+the harness session id that owns it, and the hook keys locks on exactly that id. Rather than
+invent a second, mismatched notion of "who I am" — which would let this server release a lock it
+does not own, or take one that fights the hook's — the tools here are either read-only or an
+explicit, human-asked-for override. Acquiring is the hook's job alone. If a harness later
+exposes the session id to MCP servers, `lock_repo`/`unlock_repo` become a five-line addition;
+until then, a wrong identity model would be worse than no tool.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+
+from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
+
+from repolock import lock as repolock
+
+mcp = FastMCP("repo-lock")
+
+# Recording off ⇒ zero flight-recorder imports: the lock stays pure stdlib unless asked.
+if os.getenv("REPOLOCK_FLIGHT"):
+    from repolock import flight
+    flight.install()
+
+
+def _fmt_lock(v: dict) -> str:
+    lk = v.get("lock") or {}
+    lines = [
+        f"repo    : {v['repo']}",
+        f"state   : {v['status']}" + (f" ({v['reason']})" if v.get("reason") else ""),
+        f"holder  : session {lk.get('session')} (pid {lk.get('pid')})"
+        + (f" — {lk['intent']}" if lk.get("intent") else ""),
+        f"frees in: ~{int(v['expires_in'])}s" if v.get("expires_in") is not None else "",
+        f"base    : {(lk.get('base_commit') or '?')[:12]}",
+        f"head    : {(v.get('head_commit') or '?')[:12]}",
+    ]
+    if lk.get("idle_since"):
+        lines.append("idle    : yes — the holder is waiting on its human")
+    if v.get("dirty"):
+        lines.append(f"tree    : DIRTY, {len(v['dirty'])} uncommitted change(s)")
+    if v.get("takeable"):
+        lines.append("takeable: yes — the next write will take it over, with a handoff")
+    return "\n".join(x for x in lines if x)
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+def lock_status(repo: str) -> str:
+    """Who holds the lock on a local working copy, since when, on what base commit, and when it
+    frees. `repo` is a local path (e.g. `~/Projects/myrepo`).
+
+    Returns IMMEDIATELY — it never waits. Waiting inside a tool call does not work: MCP kills a
+    silent call at a hard idle timeout (we watched one die at exactly 300s), so a blocking
+    "wait for the lock" would abort rather than wait, and would look like a server hang.
+
+    Use the bounded answer it gives you to decide:
+      - the work is BLOCKING (you cannot proceed without this repo) → wait for the lease to
+        lapse, then retry; the next write takes the lock automatically.
+      - the work is NOT blocking → file an issue with what you were about to do, and move on.
+    """
+    v = repolock.status(repo)
+    if v["status"] == "unlocked":
+        dirty = v.get("dirty") or []
+        tail = f" (tree has {len(dirty)} uncommitted change(s))" if dirty else " (tree clean)"
+        return f"{v['repo']} is UNLOCKED{tail}\nhead: {(v.get('head_commit') or '?')[:12]}"
+    return _fmt_lock(v)
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+def lock_drift(repo: str, seen_head: str) -> str:
+    """Has this working copy moved under you since you last looked? `seen_head` is the commit sha
+    you last saw. No lock involved — this is the read-side check.
+
+    The failure it catches has no other detector: nothing is corrupted, and a session simply goes
+    on reasoning about commits that a concurrent rebase has already destroyed. If it reports
+    `REWRITTEN`, throw away what you remember about this repo and re-read it."""
+    v = repolock.drift(repo, seen_head)
+    if v["status"] == "current":
+        return f"{v['repo']} is unchanged at {(v.get('head_commit') or '?')[:12]}."
+    out = [v["message"]]
+    for c in v.get("commits_since") or []:
+        out.append(f"  {c}")
+    return "\n".join(out)
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True,
+                                      idempotentHint=True))
+def force_unlock(repo: str, confirm_session: str) -> str:
+    """Break a lock you do not own. The deliberate override, for when a holder is wedged.
+
+    `confirm_session` must be the exact session id currently holding it — call `lock_status`
+    first, show the user who they are about to interrupt, and get an explicit yes. Breaking a
+    live lock lets two sessions write the same checkout at once, which is the precise thing this
+    machinery exists to prevent, so it is never the routine answer: a lapsed lock is taken over
+    automatically by the next write, with a handoff, and needs no force at all.
+    """
+    v = repolock.status(repo)
+    if v["status"] == "unlocked":
+        return f"{v['repo']} is not locked — nothing to break."
+
+    holder = (v.get("lock") or {}).get("session")
+    if confirm_session != holder:
+        return (f"Refusing to force: {v['repo']} is held by session {holder!r}, not "
+                f"{confirm_session!r}. Call lock_status and pass the exact holder.")
+
+    if v.get("takeable"):
+        return (f"No force needed — that lock is already {v.get('reason')}. The next write "
+                f"takes it over automatically, with a handoff describing what changed.")
+
+    out = repolock.release(repo, holder, force=True)
+    dirty = v.get("dirty") or []
+    warn = (f"\nWARNING: the tree has {len(dirty)} uncommitted change(s) belonging to the "
+            f"session you just interrupted. Review them before you write.") if dirty else ""
+    return f"Forced the lock on {out['repo']} away from session {holder}.{warn}"
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+def lock_debug(repo: str) -> str:
+    """The raw lock record, as JSON. For when the prose above isn't enough."""
+    return json.dumps(repolock.status(repo), indent=2, sort_keys=True, default=str)
+
+
+def main() -> None:
+    mcp.run()  # stdio
+
+
+if __name__ == "__main__":
+    main()

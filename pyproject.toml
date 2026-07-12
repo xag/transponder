@@ -1,0 +1,29 @@
+[project]
+name = "repolock"
+version = "0.1.0"
+description = "One developer, several AI agent sessions, one checkout — a lockfile convention (spec) plus its reference implementation"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+# The core is pure stdlib, on purpose: a lock convention with a dependency tree is an
+# adoption blocker. Everything heavier is an extra.
+dependencies = []
+
+[project.optional-dependencies]
+mcp = ["mcp[cli]>=1.2"]
+flight = ["flight-recorder @ git+https://github.com/xag/flight-recorder"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["repolock"]
