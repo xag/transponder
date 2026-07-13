@@ -27,12 +27,14 @@ The ledger check skips where bom is not installed, and runs on machines that hav
 
 from __future__ import annotations
 
-import tempfile
+import os
 from pathlib import Path
 
-from bom import Bom, Library, Node, Quantity
-from bom.grounding import GROUNDING_PACKAGE
-from bom.ledger import LEDGER_PACKAGE
+import bom.grounding  # noqa: F401 -- the natives; the package itself arrives by pin
+from bom import Bom, Node, Quantity
+from bom.library import consume
+
+_ROOT = Path(__file__).resolve().parents[1]
 
 DECISIONS = [
     Node(id="protocol-not-process", kind="decision", name="Ship a protocol, not a service",
@@ -459,14 +461,14 @@ def build() -> Bom:
     and was filed as a hypothesis instead, with a falsifier that would only fire once it had cost
     someone their work. The package that models this properly already existed.
     """
-    # No package channel exists yet (bom#19), so the only way to reach ledger@0.1.0 is to publish it
-    # from bom's source into a library at load. When #19 lands this becomes a pin against a real
-    # registry and this function loses its tempdir.
-    lib = Library(Path(tempfile.mkdtemp(prefix="bom-lib-")))
-    lib.publish(GROUNDING_PACKAGE, {})
-    lib.publish(LEDGER_PACKAGE, {})
+    # The channel of bom#19 landed and this function lost its tempdir, as promised. This
+    # repo is public and bom's registry is not, so the synced cache (.bom/library) is
+    # COMMITTED, not ignored: the package travels as data in the repo itself, verified
+    # against bom.lock's digests at every load, and the check still simply skips where
+    # bom (the Python) is not installed. A registry, when reachable, only refreshes it.
+    lib, refs = consume(_ROOT, os.environ.get("BOM_REGISTRY", _ROOT.parent / "bom-registry"))
 
-    bom = Bom(packages=[{"name": "ledger", "version": LEDGER_PACKAGE.version}])
+    bom = Bom(packages=[next(r for r in refs if r.name == "ledger")])
     bom = lib.effective(bom)
 
     bom.root.children = [*DECISIONS, *HYPOTHESES, *DEBTS, GATE]
