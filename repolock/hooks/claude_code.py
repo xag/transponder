@@ -70,10 +70,22 @@ def _say(msg: str) -> None:
 def _record() -> None:
     """Arm the recorder immediately before the first call into `lock` — never at the top of main().
     The boundary being recorded IS the lock; a hook call that touches no lock has nothing to record,
-    and installing eagerly taxed every read with a ~110ms flight-recorder import."""
-    if env.recording():
+    and installing eagerly taxed every read with a ~110ms flight-recorder import.
+
+    A MISSING recorder must never cost the lock. `flight-recorder` is an optional extra and
+    recording is on by default, so a plain `pip install .` has no recorder — and until this
+    try/except existed, the ImportError travelled up into main()'s fail-open handler and every hook
+    call no-oped. The lock looked installed, printed a line to stderr nobody reads, and guarded
+    nothing. An optional dependency that silently disables the whole tool when it is absent is not
+    optional; it is a hard dependency with a bug.
+    """
+    if not env.recording():
+        return
+    try:
         from repolock import flight
-        flight.install()
+    except ImportError:
+        return                            # no recorder installed: run without a tape, not without a lock
+    flight.install()
 
 
 def _intent(payload: dict) -> str:

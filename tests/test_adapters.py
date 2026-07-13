@@ -327,6 +327,30 @@ def test_claude_fails_open_on_garbage_input(repo):
     assert res.returncode == 0
 
 
+def test_a_missing_flight_recorder_costs_the_tape_not_the_lock(repo, tmp_path, monkeypatch):
+    """`flight-recorder` is an OPTIONAL extra and recording is ON by default, so a plain
+    `pip install .` has no recorder. The ImportError used to travel up into the fail-open handler
+    and no-op every hook: the lock looked installed, printed one line to a stderr nobody reads, and
+    guarded nothing. An optional dependency that silently disables the tool when absent is not
+    optional — it is a hard dependency with a bug."""
+    stub = tmp_path / "no_recorder"
+    stub.mkdir()
+    (stub / "flight_recorder.py").write_text("raise ImportError('not installed')")
+
+    env = dict(os.environ, REPOLOCK_DISABLED="0", REPOLOCK_DIR=str(tmp_path / "locks"),
+               PYTHONPATH=str(stub))
+    def hook(session):
+        p = {"hook_event_name": "PreToolUse", "tool_name": "Edit",
+             "tool_input": {"file_path": os.path.join(repo, "a.txt")},
+             "cwd": repo, "session_id": session}
+        return subprocess.run([sys.executable, CLAUDE], input=json.dumps(p), env=env,
+                              capture_output=True, text=True)
+
+    assert hook("A").returncode == 0
+    res = hook("B")
+    assert res.returncode == 2, "with no recorder installed, the lock stopped locking entirely"
+
+
 def test_the_kill_switch_stops_every_event(repo, tmp_path, monkeypatch):
     """A lock you cannot switch off is worse than no lock. The file reaches sessions that already
     snapshotted their hooks — the ones you most need to free."""

@@ -76,10 +76,18 @@ def _repos(p: dict) -> list[str]:
 def _record() -> None:
     """Arm the recorder immediately before the first call into `lock` — never at the top of
     main(). The boundary being recorded IS the lock, so a hook call that takes no lock has
-    nothing to record, and installing eagerly would tax every read with the import."""
-    if env.recording():
+    nothing to record, and installing eagerly would tax every read with the import.
+
+    A missing recorder must never cost the lock: `flight-recorder` is an optional extra, so a plain
+    install has none, and an ImportError here used to travel into the fail-open handler and disable
+    every hook. Run without a tape, not without a lock."""
+    if not env.recording():
+        return
+    try:
         from repolock import flight
-        flight.install()
+    except ImportError:
+        return
+    flight.install()
 
 
 def _catch_up(p: dict) -> list[str]:
