@@ -31,8 +31,9 @@ def commit(repo, msg="more"):
 # --- the zero-import promise ----------------------------------------------------
 
 def test_the_core_imports_no_optional_dependency():
-    """Recording off ⇒ zero imports (README's promise, kept by a test). The core and the hook
-    must be usable on a machine that installed nothing but this package."""
+    """Importing the core pulls in nothing optional (README's promise, kept by a test). The core
+    and the hook must be usable on a machine that installed nothing but this package — the
+    flight-recorder import is lazy, inside main(), and recording-on must not change that."""
     code = (
         "import sys\n"
         "import repolock\n"
@@ -44,6 +45,33 @@ def test_the_core_imports_no_optional_dependency():
     res = subprocess.run([sys.executable, "-c", code], env=clean_env,
                          capture_output=True, text=True)
     assert res.returncode == 0, f"core import pulled in: {res.stderr.strip()}"
+
+
+# --- recording is on by default, and lands outside every repo -------------------
+
+def test_recording_is_on_unless_switched_off(monkeypatch):
+    """The default that #4 paid for: a tape you have to remember to switch on is a tape you do
+    not have when it matters."""
+    monkeypatch.delenv("REPOLOCK_FLIGHT", raising=False)
+    assert env.recording() is True
+    for off in ("0", "false", "off", "no", ""):
+        monkeypatch.setenv("REPOLOCK_FLIGHT", off)
+        assert env.recording() is False, off
+
+
+def test_recordings_never_land_inside_a_repo(repo, monkeypatch):
+    """The recorder must not dirty the tree it is watching. The hook runs with cwd set to the
+    session's checkout, so a RELATIVE default would write `flight/` straight into every repo on
+    the machine — and show up in `git status` as an edit of its own (SPEC.md §1)."""
+    monkeypatch.delenv("REPOLOCK_FLIGHT_DIR", raising=False)
+    monkeypatch.chdir(repo)
+
+    assert os.path.isabs(env.flight_dir()), "a relative recording dir writes into the repo"
+
+    lock.acquire(repo, "A", 0, 600, intent="Edit")
+    dirty = subprocess.run(["git", "status", "--porcelain"], cwd=repo,
+                           capture_output=True, text=True).stdout.strip()
+    assert not dirty, f"recording dirtied the working tree it was watching:\n{dirty}"
 
 
 # --- exclusion ----------------------------------------------------------------

@@ -118,6 +118,84 @@ LEDGER = Bom(
         # here: nothing in the design leans on them and no rule or tape can falsify them. The
         # ledger holds only what gates future work.
 
+        Node(id="write-detection-names-the-write", kind="decision",
+             name="A command is a write only when we can point at the write; the unknown is a read",
+             meta={"rationale":
+                   "Reached by being wrong first, in production, and the record of that is the "
+                   "point of this entry. The fail-closed design (enumerate the READERS, treat the "
+                   "unknown as a write) was shipped and it broke a two-session fleet within the "
+                   "hour: `cd repo && cat file` was a write because `cd` was not on the reader "
+                   "list, and `gh issue view` was a write because `gh` was not either. Sessions "
+                   "doing nothing but reading minted ten-minute write leases and locked out the "
+                   "sessions that actually wanted to change something; the blocked sessions could "
+                   "not inspect, could not wait (`sleep` was also a 'write'), and could not file "
+                   "the bug (xag/repolock#4 was filed through an MCP tool, the one path not "
+                   "gated). The premise underneath it — 'a false positive costs a lock we'd have "
+                   "taken anyway', which SPEC §7 asserted and this file repeated — is simply "
+                   "false. A false positive costs the LEASE, and the lease is the only resource "
+                   "the protocol has. One unguarded write damages one tree and the drift check "
+                   "(§6) can still catch it; a gate that locks on reads stops every session on "
+                   "the machine, including the one trying to diagnose it. Prefer the failure that "
+                   "remains detectable. The false-negative tail is real and stays open — see "
+                   "hyp-mutation-not-invocation for how it actually closes."},
+             children=[
+                 Node(id="alt-readers-allowlist", kind="rejected-alternative",
+                      name="Enumerate the readers; fail closed on the unknown",
+                      meta={"why_not": "tried, shipped, and reverted the same day. On Windows every "
+                                       "command reaches the harness through a shell, so the "
+                                       "allowlist must enumerate not just the readers but every "
+                                       "shape a reader comes in — and it cannot. The cost of the "
+                                       "miss is not a redundant lock, it is a starved fleet: "
+                                       "xag/repolock#4"}),
+                 Node(id="alt-lock-every-shell", kind="rejected-alternative",
+                      name="Lock on every shell command, reads included",
+                      meta={"why_not": "the same failure as the allowlist, arrived at honestly "
+                                       "instead of by accident: it is what the allowlist DEGRADED "
+                                       "into once the misses piled up, and we have now watched it "
+                                       "happen"}),
+             ]),
+
+        # KILLED 2026-07-13, the day it was written. It claimed that failing closed would not
+        # starve a reading session; within the hour, two sessions on korean-gpt-coach were doing
+        # exactly that to each other (xag/repolock#4). The falsifier below asked for a flight
+        # recording and got none — recording was never switched on — so the kill came from harness
+        # transcripts instead. That the tape was missing at the one moment it was needed is itself
+        # the finding, and it is why hyp-* entries here are worth nothing until REPOLOCK_FLIGHT is
+        # on by default. Kept, not deleted: a ledger that quietly drops its dead hypotheses is a
+        # ledger that cannot show you were wrong.
+        Node(id="hyp-readers-not-starved", kind="hypothesis",
+             name="[FALSIFIED] Failing closed does not starve the reading session",
+             meta={"claim": "Sessions that mostly read take the lock only when they run something "
+                            "unrecognized, and Stop releases a clean tree — so a fail-closed gate "
+                            "does not turn a reading session into a blocker in practice.",
+                   "status": "falsified",
+                   "killed_by": "xag/repolock#4 — two sessions, each refused by the other, on "
+                                "`cd && cat`, `cd && git status`, `gh issue view` and `sleep`. "
+                                "Observed in harness transcripts; no flight recording existed."},
+             children=[
+                 Node(id="kill-readers-starved", kind="falsifier",
+                      meta={"observation":
+                            "A session is denied the lock by a holder whose whole turn wrote "
+                            "nothing — the lock was taken by the fail-closed default alone.",
+                            "fired_on": "2026-07-13"}),
+             ]),
+
+        Node(id="hyp-mutation-not-invocation", kind="hypothesis",
+             name="The right question is 'did the repo change?', not 'did a shell run?'",
+             meta={"claim": "Both open bugs — the writer list's false-negative tail (#2) and the "
+                            "reader gate's false-positive catastrophe (#4) — are the same mistake: "
+                            "predicting mutation from a command line. An adapter can instead ask "
+                            "git what changed, and hold the lease for the session that actually "
+                            "changed something."},
+             children=[
+                 Node(id="kill-mutation-not-invocation", kind="falsifier",
+                      meta={"observation":
+                            "A recording shows a session mutating the working copy with the lease "
+                            "held by someone else — i.e. observing-after-the-fact was too late to "
+                            "prevent the collision it exists to prevent, and prediction was needed "
+                            "after all."}),
+             ]),
+
         Node(id="hyp-renewal-on-activity", kind="hypothesis",
              name="Renew-on-tool-call keeps live sessions from lapsing mid-work",
              meta={"claim": "A 600s hook lease outlasts the longest single tool call, so an "

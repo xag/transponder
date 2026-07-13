@@ -61,6 +61,28 @@ def lock_dir() -> str:
     return d
 
 
+def recording() -> bool:
+    """Is flight recording on? ON by default — `REPOLOCK_FLIGHT=0` (or `false`/`off`/`no`) is the
+    only way to switch it off.
+
+    It lives here, in the stdlib-only module, so that a caller can ask the question without
+    importing repolock.flight — importing that module is what pulls in flight_recorder, so asking
+    must not be the thing that answers.
+    """
+    value = os.getenv("REPOLOCK_FLIGHT")
+    if value is None:
+        return True                       # unset is the default, and the default is ON
+    return value.strip().lower() not in ("0", "false", "off", "no", "")
+
+
+def flight_dir() -> str:
+    """Where recordings land: absolute, and outside every repo, for the same reason lock_dir is.
+    The hook runs with cwd set to the session's own checkout, so a relative default would drop a
+    recording directory into every repo on the machine and dirty the tree it is watching."""
+    return os.getenv("REPOLOCK_FLIGHT_DIR") or os.path.join(
+        os.path.expanduser("~"), ".repolock", "flight")
+
+
 def canonical(path: str) -> str:
     """The one true spelling of a working copy's path — so `C:\\x` and `c:/x/.` are one lock."""
     return os.path.normcase(os.path.realpath(os.path.abspath(path)))

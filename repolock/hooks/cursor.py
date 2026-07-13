@@ -40,11 +40,11 @@ import os
 import sys
 
 try:
-    from repolock import lock
+    from repolock import env, lock
     from repolock.hooks import common
 except ImportError:                               # run straight from a checkout, uninstalled
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    from repolock import lock
+    from repolock import env, lock
     from repolock.hooks import common
 
 # Tool names that edit files. Substring match, deliberately over-inclusive (SPEC.md §7): Cursor's
@@ -73,7 +73,17 @@ def _repos(p: dict) -> list[str]:
     return out
 
 
+def _record() -> None:
+    """Arm the recorder immediately before the first call into `lock` — never at the top of
+    main(). The boundary being recorded IS the lock, so a hook call that takes no lock has
+    nothing to record, and installing eagerly would tax every read with the import."""
+    if env.recording():
+        from repolock import flight
+        flight.install()
+
+
 def _gate(p: dict, repo: str, intent: str) -> None:
+    _record()
     denial, notes = common.gate(repo, _session(p), intent)
     if denial:
         _out({"permission": "deny",
@@ -98,15 +108,16 @@ def pre_tool_use(p: dict) -> None:
 
 
 def before_shell(p: dict) -> None:
-    if not common.git_writes(p.get("command") or ""):
+    if not common.shell_writes(p.get("command") or ""):
         _out({"permission": "allow"})
     repos = _repos(p)
     if not repos:
         _out({"permission": "allow"})
-    _gate(p, repos[0], intent="shell: git")
+    _gate(p, repos[0], intent="shell")
 
 
 def go_idle(p: dict) -> None:
+    _record()
     session = _session(p)
     notes = []
     for repo in _repos(p):
@@ -117,12 +128,14 @@ def go_idle(p: dict) -> None:
 
 
 def session_start(p: dict) -> None:
+    _record()
     session = _session(p)
     notes = [n for repo in _repos(p) if (n := common.drift_note(session, repo))]
     _out({"additional_context": "\n".join(notes)} if notes else {})
 
 
 def before_submit(p: dict) -> None:
+    _record()
     session = _session(p)
     notes = [n for repo in _repos(p) if (n := common.drift_note(session, repo))]
     out: dict = {"continue": True}
@@ -142,9 +155,8 @@ HANDLERS = {
 
 
 def main() -> None:
-    if os.getenv("REPOLOCK_FLIGHT"):
-        from repolock import flight
-        flight.install()
+    # No recorder here — see _record(): it is armed in the handlers that call `lock`, so a
+    # read-only shell command never pays the flight-recorder import.
     try:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):

@@ -6,12 +6,23 @@ crashed-holder case), the lockfile on disk, and git. There is nothing else: repo
 pure logic over this membrane.
 
 flight-recorder is an OPTIONAL dependency (extra `flight`), and this module is the only place
-outside the invariants that imports it — callers must import repolock.flight lazily, only when
-recording is actually on (see repolock/hooks/claude_code.py and repolock/server.py). Recording
-off means zero imports: the lock stays pure stdlib.
+outside the invariants that imports it — callers must import repolock.flight lazily (see
+repolock/hooks/claude_code.py and repolock/server.py), so an install without the extra still runs
+a pure-stdlib lock.
 
-Recording is on when REPOLOCK_FLIGHT is set; sessions land in REPOLOCK_FLIGHT_DIR
-(default `flight/locks`). Replay: `python -m repolock.replay <session>`.
+**Recording is ON by default**, and switching it on was paid for the hard way. It used to be
+opt-in behind REPOLOCK_FLIGHT, on the reasoning that the import is a per-write tax nobody should
+pay for nothing. Then the gate starved a two-session fleet (xag/repolock#4) and there was no tape
+— the incident had to be reconstructed from the harness's own transcripts, which happened to
+exist and were never designed to answer this. An opt-in recorder is off precisely when you need
+it, because you do not know in advance which hour is the interesting one. Set REPOLOCK_FLIGHT=0
+to turn it off.
+
+Sessions land in REPOLOCK_FLIGHT_DIR, default `~/.repolock/flight` — **absolute, and outside
+every repo**, for the same reason the lockfile is (SPEC.md §1): the hook runs with cwd set to the
+session's own checkout, so the old relative default (`flight/locks`) would have dropped a
+recording directory inside every repo on the machine and shown up in `git status` as an edit of
+its own. A recorder that dirties the tree it is watching is not an option.
 
 Why it matters here more than usual: a lock bug is a heisenbug. "Two sessions held it at once"
 and "it wouldn't let go after a crash" are both unreproducible by construction — they depend on
@@ -26,6 +37,11 @@ import os
 import flight_recorder as fr
 
 from repolock import env, lock
+
+
+# `recording()` and `flight_dir()` live in env.py, NOT here: a caller has to be able to ask "is
+# recording on?" WITHOUT importing this module, because importing this module is what pulls in
+# flight_recorder. Asking the question must not be the thing that answers it.
 
 BOUNDARY = fr.Boundary(
     effects=[
@@ -44,10 +60,10 @@ BOUNDARY = fr.Boundary(
 
 
 def install() -> None:
-    """No-op unless REPOLOCK_FLIGHT is set."""
+    """On by default; REPOLOCK_FLIGHT=0 turns it off."""
     fr.install(BOUNDARY, lock,
-               directory=os.getenv("REPOLOCK_FLIGHT_DIR", os.path.join("flight", "locks")),
-               enabled=bool(os.getenv("REPOLOCK_FLIGHT")),
+               directory=env.flight_dir(),
+               enabled=env.recording(),
                tool_skip_params=())
 
 

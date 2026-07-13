@@ -108,17 +108,54 @@ return verdicts, never raise: an exception in a hook is a session that cannot ed
 
 A harness adapter MUST:
 
-1. gate every **write** (file edits, and git commands that mutate the tree or history —
-   including the read-write ones: `checkout`, `pull`, `stash`) behind acquire-or-renew;
+1. gate every **write** — file-editing tools, and every shell command not proven to be a read
+   (§7a) — behind acquire-or-renew;
 2. block the write and surface the holder, lease, and intent when the verdict is `held`;
 3. surface the handoff verbatim on takeover;
 4. release-or-go-idle when the session returns control to the human;
 5. run the drift check when a session starts or resumes;
-6. **fail open, loudly**: a crashing adapter must never wedge the machine — an unguarded write
+6. gate **every shell the harness exposes**, not the one its authors use. A harness that offers
+   both `bash` and `powershell` and gates only the first is unguarded on the platform where the
+   second is the default.
+7. **fail open, loudly**: a crashing adapter must never wedge the machine — an unguarded write
    is bad, a laptop where nobody can edit anything is worse, and silent is worst.
 
-Over-inclusive write detection is correct: a false positive costs a lock you'd have taken
-anyway; a false negative is an unguarded write, which is the bug.
+## 7a. Write detection: name the write, or it is a read
+
+An adapter MUST judge a shell command a write only when it can **point at the thing in it that
+writes** — a mutating git verb, a mutating command, a redirect into a file. A command it does not
+recognize is a **read**.
+
+**A false positive is not free, and an earlier draft of this document said it was.** That claim —
+"a false positive costs a lock you'd have taken anyway" — is the most expensive sentence this
+spec has contained, and implementations MUST NOT act on it. A false positive costs the *lease*,
+and the lease is the only resource in the protocol. The alternative design (enumerate the
+readers, treat the unknown as a write) was implemented and it broke a two-session fleet inside an
+hour: `cd repo && cat file` was judged a write because `cd` was not on the reader list, and a
+session that did nothing but read held the working copy for ten minutes against a session that
+wanted to change it. Sessions could not inspect, could not wait, and could not file the bug
+(xag/repolock#4).
+
+The asymmetry is real but it points the other way. One unguarded write corrupts one tree, and the
+drift check (§6) exists to catch precisely that class of surprise. A gate that locks on reads
+stops **every session on the machine**, including the ones trying to diagnose it. Prefer the
+failure the protocol can still detect.
+
+A conforming adapter therefore:
+
+- splits a command on every separator its shell honors (`&&`, `||`, `;`, `|`, newline) and judges
+  **each segment on its own** — `cd sub; git commit` is a commit, and a check keyed on the first
+  token of the whole command misses it;
+- resolves the command through the prefixes and options that hide it — `cd`, `sudo`, `VAR=value`,
+  an absolute path, `git -C sub commit`;
+- treats a redirect into a file as a write regardless of the command (`echo` is a read until it
+  is pointed at a file), excepting the non-file sinks (`/dev/null`, `$null`, `2>&1`);
+- treats an unrecognized command as a read.
+
+The tail this leaves open is real: a mutating command nobody listed writes unguarded. It is not
+closed by widening the list until it swallows the world. It is closed by asking a better
+question — not *"did a shell run?"* but *"did the repo change?"* — which an adapter can answer
+after the fact, from git itself, rather than by predicting it from a command line.
 
 ## Non-goals
 

@@ -40,7 +40,7 @@ guarded — use an absolute path to a python that can import `repolock`:
 {
   "hooks": {
     "PreToolUse": [{
-      "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+      "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell",
       "hooks": [{"type": "command", "timeout": 20,
                  "command": "\"<python>\" \"<checkout>/repolock/hooks/claude_code.py\""}]
     }],
@@ -49,6 +49,10 @@ guarded — use an absolute path to a python that can import `repolock`:
   }
 }
 ```
+
+Both shells belong in the matcher. The matcher is a list of *names*, and a name that is missing is
+a tool the hook never sees: on Windows `PowerShell` is the shell that actually runs, so a matcher
+without it leaves every write on that platform unguarded, silently and for as long as nobody looks.
 
 Optionally register the MCP server for visibility (`uv run python -m repolock.server`).
 
@@ -81,14 +85,24 @@ to ask its human something releases on a clean tree, or holds until its lease la
 one — and the next writer inherits a **handoff**: what landed while the previous holder was
 away, what it left uncommitted, and whether history was rewritten under everyone's feet.
 
-## Recording (optional)
+## Recording (on by default)
 
 A lock bug is a heisenbug — a clock, a PID, and an interleaving you cannot re-stage. With the
-`flight` extra, every lock operation can be recorded at its nondeterminism boundary and
-replayed deterministically, and `repolock/invariants.py` holds the claims (two live sessions
-never hold the same copy; a dirty tree is never handed over; …) that condemn a bad trajectory
-on any tape. Recording is off unless `REPOLOCK_FLIGHT` is set, and **off means zero imports** —
-the core never pays for it.
+`flight` extra, every lock operation is recorded at its nondeterminism boundary and replayed
+deterministically, and `repolock/invariants.py` holds the claims (two live sessions never hold
+the same copy; a dirty tree is never handed over; …) that condemn a bad trajectory on any tape.
+
+**Recording is on by default, and that default was bought the hard way.** It used to be opt-in
+behind `REPOLOCK_FLIGHT`, to spare the hook's hot path a heavyweight import. Then the write gate
+starved a two-session fleet ([#4](https://github.com/xag/repolock/issues/4)) and there was no
+tape: the incident had to be reconstructed from the harness's own transcripts, which happened to
+exist and were never designed to answer the question. An opt-in recorder is off exactly when you
+need it, because nobody knows in advance which hour is the interesting one.
+
+Recordings land in `~/.repolock/flight` — absolute, and outside every repo, for the same reason
+the lockfile is: the hook runs with cwd set to the session's checkout, so a relative default
+would drop a recording directory into every repo on the machine. Set `REPOLOCK_FLIGHT=0` to turn
+recording off and buy back the zero-import path.
 
 ## Honest niche
 
@@ -109,6 +123,6 @@ as the reference.
 
 | variable              | meaning                                              |
 |-----------------------|------------------------------------------------------|
-| `REPOLOCK_DIR`        | lockfile directory (default `~/.repolock/locks`)     |
-| `REPOLOCK_FLIGHT`     | set to record lock operations (needs extra `flight`) |
-| `REPOLOCK_FLIGHT_DIR` | where recordings land (default `flight/locks`)       |
+| `REPOLOCK_DIR`        | lockfile directory (default `~/.repolock/locks`)      |
+| `REPOLOCK_FLIGHT`     | recording; **on** unless set to `0`/`false`/`off`     |
+| `REPOLOCK_FLIGHT_DIR` | where recordings land (default `~/.repolock/flight`)  |

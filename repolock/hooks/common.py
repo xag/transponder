@@ -10,15 +10,65 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
+import shlex
 import subprocess
 
 from repolock import env, lock
 
-# git subcommands that mutate the working copy or rewrite history. `rebase` is on this list
-# because a rebase is a *sequence* of commits, and the lock must span the whole sequence.
+# The WRITERS are the list, and the unrecognized command is a READ.
+#
+# The opposite was tried, in the obvious belief that failing closed is the safe direction: a
+# reader allowlist, anything unknown takes the lock. It broke a two-session fleet within the hour
+# (xag/repolock#4). The reasoning was right about the asymmetry and wrong about the population.
+# On Windows every command reaches the harness through a shell, so an allowlist has to enumerate
+# not just the readers but every *shape* a reader comes in — and it missed `cd`, which is how
+# `cd repo && cat file` becomes a write, and `gh`, which is how reading a GitHub issue mints a
+# ten-minute write lease. Sessions doing nothing but reading held the repo against sessions that
+# actually wanted to change it. That is not a conservative failure; it is a livelock with good
+# intentions.
+#
+# So: a false positive is NOT free, and the earlier note in this file saying so (repeated into
+# SPEC §7) was simply wrong. It costs the lease, and the lease is the whole resource. A false
+# negative is one unguarded write; a false positive can stop every session on the machine.
+#
+# The tail this leaves open — a mutating command nobody listed — is real, and it is issue #2. It
+# does not get closed by widening this list until it swallows the world. It gets closed by asking
+# the right question, which is not "was this a shell command?" but "did the repo change?" (#4).
+# Unchanged from v0.1, and deliberately not widened: every entry here mutates the tree or its
+# history, and nothing is added "just in case". `git fetch`, `git gc` and `git submodule status`
+# are absent because they do not touch the working copy — and a lock they do not need is a lock
+# taken from someone who does.
 WRITING_GIT = ("commit", "rebase", "merge", "reset", "checkout", "switch", "restore",
                "cherry-pick", "revert", "apply", "am", "stash", "push", "pull", "clean", "mv",
                "rm", "add")
+
+# Non-git commands that mutate a working copy. Judged on the head of each segment, basename'd and
+# lower-cased, so both shells' spellings share one set.
+WRITING_SHELL = {
+    # POSIX
+    "rm", "rmdir", "mv", "cp", "touch", "mkdir", "tee", "dd", "truncate", "patch", "install",
+    "ln", "chmod", "chown", "unzip", "gunzip",
+    # PowerShell, and its aliases
+    "set-content", "add-content", "out-file", "new-item", "remove-item", "copy-item",
+    "move-item", "rename-item", "clear-content", "ni", "ri", "cpi", "mi", "rni", "sc", "ac",
+}
+
+# git's global options that swallow the next token, which would otherwise be read as the
+# subcommand: `git -C sub commit` is a commit, not a `sub`.
+_GIT_GLOBAL_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path",
+                          "--config-env"}
+
+# Segment separators, longest first so `||` is never read as two pipes. Every segment is judged
+# on its own: `cd sub && git commit` is a commit, and keying on the first token of the whole
+# command — as v0.1 did — misses it. THIS is the half of the fail-closed experiment that was
+# never wrong, and it survives.
+_SEPARATORS = re.compile(r"&&|\|\||;|\||\n|\r")
+
+# A redirect into a file is a write whatever ran: `echo` is a reader until it is pointed at a
+# file. The sinks that are not files are the exception: `2>&1`, `/dev/null`, PowerShell's `$null`.
+_REDIRECT = re.compile(r"\d?>>?\s*([^\s;|&]+)")
+_NOT_A_FILE = {"/dev/null", "$null", "nul", "null"}
 
 LEASE_SECONDS = 600          # renewed on every tool call; must outlast the longest single call
 SEEN_DIR = "seen"
@@ -33,17 +83,76 @@ def repo_root(cwd: str) -> str | None:
     return res.stdout.strip() or None if res.returncode == 0 else None
 
 
-def git_writes(command: str) -> bool:
+def _tokens(segment: str) -> list[str]:
+    try:
+        return shlex.split(segment, posix=True)
+    except ValueError:                   # unbalanced quotes — unreadable, so unjudgeable
+        return segment.split()
+
+
+def _head(tokens: list[str]) -> str | None:
+    """The command a segment actually runs: env assignments and prefixes skipped, path stripped,
+    case folded. `cd` is a prefix like any other — `cd repo && git commit` runs git, and reading
+    `cd` as the command is the mistake that locked a fleet out of its own repos (#4)."""
+    for tok in tokens:
+        if "=" in tok and not tok.startswith("-") and tok.split("=", 1)[0].isidentifier():
+            continue                     # VAR=value prefix
+        if tok in ("sudo", "command", "nice", "time", "env", "exec", "&"):
+            continue                     # a prefix, not the command — keep looking
+        return os.path.basename(tok).lower().removesuffix(".exe")
+    return None
+
+
+def _git_subcommand(tokens: list[str]) -> str | None:
+    rest = iter(tokens[1:])
+    for tok in rest:
+        if tok in _GIT_GLOBAL_WITH_VALUE:
+            next(rest, None)             # this flag eats its value
+            continue
+        if tok.startswith("-"):
+            continue
+        return tok.lower()
+    return None                          # bare `git` — prints usage, writes nothing
+
+
+def _segment_writes(segment: str) -> bool:
+    if not segment.strip():
+        return False
+    if any(t.strip("\"'").lower() not in _NOT_A_FILE and not t.startswith("&")
+           for t in _REDIRECT.findall(segment)):
+        return True                      # pointed at a file: a write, whatever ran
+
+    tokens = _tokens(segment)
+    head = _head(tokens)
+    if head is None:
+        return False
+    if head == "git":
+        return _git_subcommand(tokens) in WRITING_GIT
+    if head == "sed":
+        return "-i" in tokens or any(t.startswith("--in-place") for t in tokens)
+    return head in WRITING_SHELL
+
+
+def shell_writes(command: str) -> bool:
     """Does this shell command mutate a working copy or its history?
 
-    Cheap and deliberately over-inclusive: a false positive costs a lock we'd have taken
-    anyway; a false negative is an unguarded write, which is the bug.
+    Deliberately NOT over-inclusive, and that is the correction #4 bought at the cost of an
+    outage. The old note here — "a false positive costs a lock we'd have taken anyway" — was
+    false. A false positive costs the *lease*, and the lease is the only resource there is: a
+    session that merely read a file, or asked GitHub about an issue, would hold the repo for ten
+    minutes against a session that actually wanted to change it. One unguarded write is a smaller
+    failure than a machine where nobody can write at all.
+
+    So: a command writes when we can point at the thing in it that writes — a mutating git verb,
+    a mutating command, a redirect into a file. Everything else is a read, including everything
+    we do not recognize. The remaining tail (a mutator nobody listed) is issue #2, and it does not
+    get closed by widening this list; it gets closed by asking whether the REPO changed instead of
+    whether a SHELL ran.
+
+    One function for both shells: the separators and redirect forms overlap, and the mutating
+    cmdlets sit in the same set as their POSIX cousins.
     """
-    for part in (command or "").strip().split("&&"):
-        toks = part.split()
-        if len(toks) >= 2 and toks[0] == "git" and toks[1] in WRITING_GIT:
-            return True
-    return False
+    return any(_segment_writes(seg) for seg in _SEPARATORS.split(command or ""))
 
 
 # --- the per-(session, repo) memory of the last-seen HEAD ----------------------

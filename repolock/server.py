@@ -24,12 +24,14 @@ import os
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
+from repolock import env
 from repolock import lock as repolock
 
 mcp = FastMCP("repo-lock")
 
-# Recording off ⇒ zero flight-recorder imports: the lock stays pure stdlib unless asked.
-if os.getenv("REPOLOCK_FLIGHT"):
+# Recording is ON by default (REPOLOCK_FLIGHT=0 to disable): the tape has to exist before the
+# incident, not after it.
+if env.recording():
     from repolock import flight
     flight.install()
 
