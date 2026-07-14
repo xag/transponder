@@ -1,19 +1,15 @@
 """The off switch — and the on switch. `python -m repolock.toggle off | on | status`.
 
-A lock that guards every checkout on the machine is a lock that can take the machine down, and this
-one has now done so four times (#4, #7, #10, #11). The thing you need at that moment is not a README
-section about editing settings.json; it is one command, and it has to work *from inside the session
-that is currently locked out*. Two consequences shape this module:
+The predecessor of this module switched off a LOCK that had taken the machine down four times
+(#4, #7, #10, #11). The lock is gone — nothing here refuses a tool call any more — but the switch
+stays, because an information layer can still be wrong, noisy, or slow, and off must mean off:
 
   It must reach a session that is ALREADY RUNNING. A harness snapshots its hooks when it starts, so
-  removing them from settings.json does nothing for the sessions currently wedged — which are
-  precisely the ones you are trying to free. Only a file on disk, checked on every hook call, gets
-  through: `~/.repolock/DISABLED` (env.disabled). That is the switch, and it is instant.
+  removing them from settings.json does nothing for sessions already up. Only a file on disk,
+  checked on every hook call, gets through: `~/.repolock/DISABLED` (env.disabled). Instant.
 
-  It must not require a shell. When the lock misfires it refuses your shell — that is what a
-  refusal IS — so an off switch spelled as a shell command is unreachable exactly when it is needed.
-  So the real surface is the MCP tools (`lock_disable` / `lock_enable` in repolock/server.py), which
-  the hook does not gate. This CLI is the same two functions for a human at a terminal.
+  The real surface is the MCP tools (`lock_disable` / `lock_enable` in repolock/server.py), so a
+  running agent can reach it without a terminal. This CLI is the same two functions for a human.
 
 The two dimensions are deliberately separate, and `status` reports both:
 
@@ -32,7 +28,7 @@ import os
 import sys
 import time
 
-from repolock import env, lock
+from repolock import env
 from repolock.hooks import claude_code
 
 
@@ -55,43 +51,35 @@ def state() -> dict:
         "env_override": override,         # beats the file, in BOTH directions — see env.disabled()
         "since": note.get("since"),
         "reason": note.get("reason"),
-        "held": held_locks(),
+        "held": held_claims(),
         "path": path,
         "settings": claude_code.settings_path(),
     }
 
 
-def held_locks() -> list[dict]:
-    """Every lock currently on disk. Turning the switch off does not release these — it makes them
-    inert — and a stale one is the first thing you want to see when you come to turn it back on."""
+def held_claims() -> list[dict]:
+    """Every claim on the map, live or lapsed. Turning the switch off does not clear these — it
+    makes them inert — and a stale one is the first thing to look at before turning it back on."""
     out = []
-    try:
-        names = os.listdir(env.lock_dir())
-    except OSError:
-        return out
-    for name in sorted(names):
-        if not name.endswith(".json"):
-            continue
+    for text in env.read_claims():
         try:
-            with open(os.path.join(env.lock_dir(), name), encoding="utf-8") as f:
-                rec = json.load(f)
-        except (OSError, json.JSONDecodeError):
+            rec = json.loads(text)
+        except (json.JSONDecodeError, ValueError):
             continue
         left = round(rec.get("expires_at", 0) - env.now())
-        out.append({"repo": rec.get("repo"), "session": rec.get("session"),
-                    "intent": rec.get("intent"), "expires_in": left,
-                    "idle": rec.get("idle_since") is not None, "lapsed": left <= 0})
+        out.append({"session": rec.get("session"), "scope": rec.get("scope") or [],
+                    "intent": rec.get("intent"), "expires_in": left, "lapsed": left <= 0})
     return out
 
 
 def disable(reason: str = "", clear: bool = False, unwire: bool = False) -> dict:
     """Arm the panic file. Every adapter, in every session, running or not, becomes a no-op.
 
-    `clear` also drops the lockfiles, so nothing is held when you turn it back on. `unwire` takes
-    the hooks out of settings.json as well — belt and braces, and only that: the panic file alone
-    is already sufficient and is the half that reaches running sessions.
+    `clear` also empties the claims map, so nothing stale greets you when it comes back on.
+    `unwire` takes the hooks out of settings.json as well — belt and braces, and only that: the
+    switch file alone is already sufficient and is the half that reaches running sessions.
     """
-    before = held_locks()
+    before = held_claims()
     os.makedirs(os.path.dirname(env.disabled_path()), exist_ok=True)
     with open(env.disabled_path(), "w", encoding="utf-8") as f:
         json.dump({"since": time.strftime("%Y-%m-%d %H:%M:%S"), "reason": reason or "no reason given",
@@ -100,8 +88,8 @@ def disable(reason: str = "", clear: bool = False, unwire: bool = False) -> dict
     cleared = []
     if clear:
         for held in before:
-            if lock.release(held["repo"], held["session"], force=True).get("freed"):
-                cleared.append(held["repo"])
+            if env.remove_claim(held["session"]):
+                cleared.append(held["session"])
     if unwire:
         claude_code.uninstall()
     return {"armed": True, "was_holding": before, "cleared": cleared, "unwired": unwire}
@@ -114,13 +102,13 @@ def enable() -> dict:
     reports itself enabled and guards precisely nothing — the failure mode that is worse than being
     off, because you would be relying on it.
     """
-    stale = [h for h in held_locks() if h["lapsed"]]
+    stale = [h for h in held_claims() if h["lapsed"]]
     try:
         os.remove(env.disabled_path())
     except FileNotFoundError:
         pass
     claude_code.install()
-    return {"armed": False, "wired": claude_code.wired(), "stale_locks": stale,
+    return {"armed": False, "wired": claude_code.wired(), "stale_claims": stale,
             "env_override": os.getenv("REPOLOCK_DISABLED")}
 
 
@@ -141,12 +129,11 @@ def render(s: dict) -> str:
         out.append("  WARNING : not armed, but not wired either — nothing is guarding anything.")
 
     held = s["held"]
-    out.append(f"  holding : {len(held)} lock(s)" if held else "  holding : nothing")
+    out.append(f"  the map : {len(held)} claim(s)" if held else "  the map : empty")
     for h in held:
-        tag = "LAPSED" if h["lapsed"] else (f"idle, {h['expires_in']}s left" if h["idle"]
-                                            else f"{h['expires_in']}s left")
-        out.append(f"            {h['repo']}  [{tag}]  session {(h['session'] or '?')[:8]}"
-                   f"  {(h['intent'] or '')[:40]}")
+        tag = "LAPSED" if h["lapsed"] else f"{h['expires_in']}s left"
+        out.append(f"            {(h['session'] or '?')[:8]}  [{tag}]  {', '.join(h['scope'])[:60]}"
+                   f"  {(h['intent'] or '')[:36]}")
     return "\n".join(out)
 
 
@@ -160,9 +147,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="repolock.toggle", description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    off = sub.add_parser("off", help="turn the lock off, everywhere, now")
+    off = sub.add_parser("off", help="switch it off, everywhere, now")
     off.add_argument("--reason", default="", help="why — written into the switch file")
-    off.add_argument("--clear", action="store_true", help="also drop every lock currently held")
+    off.add_argument("--clear", action="store_true", help="also empty the claims map")
     off.add_argument("--unwire", action="store_true",
                      help="also remove the hooks from settings.json (the panic file alone suffices)")
 
@@ -174,16 +161,16 @@ def main(argv: list[str] | None = None) -> int:
         v = disable(reason=args.reason, clear=args.clear, unwire=args.unwire)
         print(render(state()))
         if v["cleared"]:
-            print(f"\ncleared {len(v['cleared'])} lock(s): {', '.join(v['cleared'])}")
+            print(f"\ncleared {len(v['cleared'])} claim(s)")
         print("\nRunning sessions are freed immediately — the switch is read on every hook call.")
         return 0
 
     if args.cmd == "on":
         v = enable()
         print(render(state()))
-        if v["stale_locks"]:
-            print(f"\n{len(v['stale_locks'])} lapsed lock(s) are still on disk; the next write takes "
-                  "them over with a handoff. `off --clear` drops them outright.")
+        if v["stale_claims"]:
+            print(f"\n{len(v['stale_claims'])} lapsed claim(s) are still on the map; they bind "
+                  "nobody. `off --clear` drops them outright.")
         return 0
 
     print(render(state()))

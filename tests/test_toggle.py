@@ -1,8 +1,9 @@
-"""The off switch, held to the one promise that matters: it frees a session that is already wedged.
+"""The off switch, held to the one promise that matters: it reaches sessions already running.
 
-Every other property here is in service of that. A panic switch that needed a restart, or a shell,
-or a settings.json edit, would be useless at the only moment anyone will ever reach for it — when
-the lock is refusing the very session that has to turn it off.
+Nothing here refuses tool calls any more, so the switch no longer frees anyone — it SILENCES: an
+information layer can still be wrong, noisy, or slow, and off must mean off, everywhere, on the
+very next hook call, without a restart and without a settings.json edit (a harness snapshots its
+hooks at startup and cannot see one).
 """
 
 import json
@@ -12,7 +13,7 @@ import sys
 
 import pytest
 
-from repolock import env, toggle
+from repolock import scope, toggle
 from repolock.hooks import claude_code
 
 CLAUDE = os.path.join(os.path.dirname(__file__), "..", "repolock", "hooks", "claude_code.py")
@@ -28,29 +29,32 @@ def switchable(repo, tmp_path, monkeypatch):
     return repo
 
 
-def _edit(repo, session="B"):
+def _edit(repo, session="B", path="a.txt"):
     return subprocess.run(
         [sys.executable, CLAUDE],
         input=json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Edit",
-                          "tool_input": {"file_path": os.path.join(repo, "a.txt")},
+                          "tool_input": {"file_path": os.path.join(repo, path)},
                           "cwd": repo, "session_id": session}),
         capture_output=True, text=True, timeout=60)
 
 
-def test_the_switch_frees_a_session_that_is_ALREADY_blocked(switchable):
-    """The whole point. A session refused the lock must be able to turn the lock off and proceed —
-    without a restart, and without the shell it has just been refused.
-
-    This is the property that makes the switch worth having: the harness snapshotted its hooks when
-    the session started, so editing settings.json cannot reach it. Only a file, read on every hook
-    call, can."""
+def test_the_switch_silences_a_session_that_is_already_running(switchable):
+    """The property that makes the switch worth having: the harness snapshotted its hooks when the
+    session started, so editing settings.json cannot reach it. Only a file, read on every hook
+    call, can — and once it is armed, the courier goes quiet on the very next call."""
     repo = switchable
-    assert _edit(repo, "A").returncode == 0                 # A takes the lock
-    assert _edit(repo, "B").returncode == 2, "B should be refused — the premise of the test"
+    os.makedirs(os.path.join(repo, "api"), exist_ok=True)
+    scope.declare(repo, "A", ["api/**"], "working")
 
-    toggle.disable(reason="B is wedged and this is the only way out")
+    noisy = _edit(repo, "B", path="api/x.py")               # B walks into A's region
+    assert noisy.returncode == 0, "nothing is ever refused"
+    assert "HEADS UP" in noisy.stdout or "SHARED" in noisy.stdout, "the courier should speak here"
 
-    assert _edit(repo, "B").returncode == 0, "the switch did not free the blocked session"
+    toggle.disable(reason="too noisy, switching off")
+
+    quiet = _edit(repo, "B", path="api/y.py")
+    assert quiet.returncode == 0
+    assert not quiet.stdout.strip(), "the switch is armed and the courier is still talking"
 
 
 def test_on_means_on_even_when_the_hooks_were_removed(switchable, tmp_path):
@@ -98,17 +102,17 @@ def test_the_switch_says_who_turned_it_off_and_why(switchable):
     assert "OFF" in toggle.render(s)
 
 
-def test_disable_can_drop_the_locks_it_was_holding(switchable):
-    """Turning it off makes held locks inert, not absent — they would resurrect on the way back in.
-    `clear` is how you leave nothing behind."""
+def test_disable_can_clear_the_map(switchable):
+    """Turning it off makes the claims inert, not absent — they would greet everyone, stale, on the
+    way back in. `clear` is how you leave nothing behind."""
     repo = switchable
-    assert _edit(repo, "A").returncode == 0
-    assert toggle.held_locks(), "A's lock should be on disk"
+    scope.declare(repo, "A", ["**"], "working")
+    assert toggle.held_claims(), "A's claim should be on the map"
 
     v = toggle.disable(reason="clearing", clear=True)
 
-    assert v["cleared"] == [env.canonical(repo)]
-    assert not toggle.held_locks(), "the lock survived a --clear"
+    assert v["cleared"] == ["A"]
+    assert not toggle.held_claims(), "the claim survived a --clear"
 
 
 def test_an_env_override_is_reported_because_it_beats_the_file(switchable, monkeypatch):

@@ -1,11 +1,12 @@
-"""The repo lock's membrane: every effect the lock depends on, and nothing else.
+"""The membrane: every effect the channel depends on, and nothing else.
 
-`repolock/lock.py` is pure logic over this module. Everything nondeterministic lives here —
-the clock, process liveness, the lockfile on disk, and git — so that the boundary is one
-import away and a lock trajectory can be recorded and replayed (see repolock/flight.py).
+`repolock/scope.py` (the claims map) and `repolock/witness.py` (what actually happened) are pure
+logic over this module. Everything nondeterministic lives here — the clock, the claim files on
+disk, and git — so that the boundary is one import away and any trajectory can be recorded and
+replayed (see repolock/flight.py).
 
-Keep this module dumb. No policy, no decisions: read the world, write the world, and let
-lock.py judge. A function that branches on what it read belongs on the other side.
+Keep this module dumb. No policy, no decisions: read the world, write the world, and let the other
+side judge. A function that branches on what it read belongs on the other side.
 """
 
 from __future__ import annotations
@@ -17,52 +18,15 @@ import time
 
 
 def now() -> float:
-    """Epoch seconds. The lock's only clock — leases are the whole design, so this is hot."""
+    """Epoch seconds. The only clock — claim leases are how stale information decays, so this is
+    the decay function of the whole map."""
     return time.time()
 
 
-def sleep(seconds: float) -> None:
-    """Wait. On the boundary because it is nondeterministic, and because a wait that is not on the
-    tape is a wait nobody can replay: 'it hung' and 'it waited exactly as told' look identical
-    afterwards unless the sleep itself was recorded."""
-    time.sleep(max(0.0, seconds))
-
-
-def pid_alive(pid: int) -> bool:
-    """Is that process still running? Answers the crashed-holder case.
-
-    pid <= 0 means "no PID was recorded", and the answer is True — *cannot disprove liveness*.
-    That default is load-bearing, not lazy. Locks taken by a harness hook have no usable PID:
-    the hook process exits the instant it returns, and its parent may be a short-lived shell
-    rather than the agent itself. Recording either would make every hook-taken lock look dead
-    within seconds, and a lock that looks dead gets stolen — silently destroying the one
-    property this whole module exists to provide. So a PID-less lock degrades to lease-only
-    liveness (a crashed holder waits out a short lease), and only a genuinely long-lived
-    process supplies a PID it can vouch for.
-
-    On Windows there's no signal-0 trick; ask the OS for the task. On POSIX, os.kill(pid, 0)
-    raises ProcessLookupError when it's gone and PermissionError when it exists but isn't ours
-    (which still means alive).
-    """
-    if pid <= 0:
-        return True
-    if os.name == "nt":
-        out = _run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], cwd=None)
-        # tasklist prints an "INFO: No tasks..." line rather than failing when there's no match.
-        return str(pid) in (out or "")
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
-
-
 def lock_dir() -> str:
-    """Where lock records live (SPEC.md "Where the lockfile lives"). Deliberately outside the
-    repo: a lock must work for a checkout that isn't a git repo yet, and must never show up in
-    `git status` as an edit of its own."""
+    """The state directory's anchor (the name predates the rename — claims, memos and the switch
+    all live beside it). Deliberately outside every repo: state about a checkout must never show
+    up in `git status` as an edit of its own."""
     d = os.getenv("REPOLOCK_DIR") or os.path.join(os.path.expanduser("~"), ".repolock", "locks")
     os.makedirs(d, exist_ok=True)
     return d
@@ -115,63 +79,12 @@ def flight_dir() -> str:
 
 
 def canonical(path: str) -> str:
-    """The one true spelling of a working copy's path — so `C:\\x` and `c:/x/.` are one lock."""
+    """The one true spelling of a path — so `C:\\x` and `c:/x/.` are one resource, and two agents
+    cannot hold one file under two names. The claims namespace rests on this function."""
     return os.path.normcase(os.path.realpath(os.path.abspath(path)))
 
 
-def record_path(repo: str) -> str:
-    """Lockfile for a canonical repo path. The basename is only there to make the directory
-    readable by a human; the hash is what makes it unique."""
-    key = hashlib.sha256(repo.encode("utf-8")).hexdigest()[:16]
-    name = os.path.basename(repo.rstrip("/\\")) or "repo"
-    return os.path.join(lock_dir(), f"{name}-{key}.json")
-
-
-def read_record(repo: str) -> str | None:
-    """The raw lockfile text, or None when the repo is unlocked."""
-    try:
-        with open(record_path(repo), encoding="utf-8") as f:
-            return f.read()
-    except FileNotFoundError:
-        return None
-    except OSError:
-        return None
-
-
-def write_record(repo: str, text: str) -> str:
-    """Write the lockfile atomically — a torn read here would be a lock held by nobody.
-
-    Returns the path written. Not cosmetic: the caller binds it to a local, so the mutation
-    lands on the flight-recorder tape and `the_verdict_matches_the_lockfile` can assert that a
-    call which *claimed* to grant a lock actually wrote one. A write that returned None would
-    be invisible to the oracle.
-    """
-    path = record_path(repo)
-    tmp = f"{path}.{os.getpid()}.tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(text)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, path)
-    return path
-
-
-def remove_record(repo: str) -> bool:
-    """Drop the lockfile. Absent is success — release is idempotent.
-
-    Returns whether there was actually a lockfile to remove, which is both the evidence the
-    oracle reads and the honest answer to "did this release free anything?".
-    """
-    try:
-        os.remove(record_path(repo))
-        return True
-    except FileNotFoundError:
-        return False
-    except OSError:
-        return False
-
-
-# --- the claim store (SPEC-v2 §2) ---------------------------------------------------------------
+# --- the claim store (SPEC §2) ---------------------------------------------------------------
 #
 # MACHINE-GLOBAL, not per-repo, because the namespace a claim is written in is the local filesystem
 # itself: every scope entry is a canonical absolute path, so the store needs no second notion of
@@ -298,7 +211,7 @@ def git_paths_between(repo: str, base: str, head: str) -> list[str]:
 
 def git_tracked_dirs(repo: str) -> list[str]:
     """Top-level directories git tracks. Only used to tell a refused agent WHERE IT MAY GO instead —
-    a conflict has to be an answer, not a wall (SPEC-v2 §2)."""
+    a conflict has to be an answer, not a wall (SPEC §2)."""
     out = _run(["git", "ls-tree", "-d", "--name-only", "HEAD"], cwd=repo)
     return [ln.strip().replace("\\", "/") for ln in (out or "").splitlines() if ln.strip()]
 

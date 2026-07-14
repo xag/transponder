@@ -1,21 +1,28 @@
-"""repolock — one developer, several AI agent sessions, one checkout.
+"""repolock — one developer, several AI agent sessions, one machine of shared checkouts.
 
-A lockfile convention (SPEC.md) plus this reference implementation. The core is pure stdlib:
-`repolock.lock` decides, `repolock.env` touches the world. Optional layers — the MCP server
-(`repolock.server`, extra `mcp`) and flight recording (`repolock.flight`, extra `flight`) —
-are imported only when actually used, so the lock itself costs nothing to adopt.
+Not a lock any more, despite the name (a rename is coming): an INFORMATION layer. Agents declare
+where they will write (`repolock.scope`, the claims map), a witness reports what actually happened
+(`repolock.witness`), and harness hooks carry both into every agent's context. Nothing is ever
+refused; the map, the notes and the loud violation report are the whole enforcement model.
+
+The core is pure stdlib: `scope` and `witness` decide, `env` touches the world. Optional layers —
+the MCP channel (`repolock.server`, extra `mcp`) and flight recording (`repolock.flight`, extra
+`flight`) — are imported only when actually used.
 """
 
-from repolock.lock import (  # noqa: F401
-    DEFAULT_LEASE_SECONDS,
-    MAX_LEASE_SECONDS,
-    WARN_BEFORE_SECONDS,
-    Lock,
-    acquire,
-    drift,
-    go_idle,
-    needs_commit_warning,
+from repolock.scope import (  # noqa: F401
+    LEASE_SECONDS,
+    canon,
+    conflicts,
+    covers,
+    declare,
+    declared,
+    extend,
+    intersection,
+    live,
+    overlaps,
     release,
-    renew,
-    status,
+    scope_of,
+    touching,
 )
+from repolock.witness import drift, snapshot, written_between  # noqa: F401

@@ -67,7 +67,7 @@ DECISIONS = [
          ]),
 
     Node(id="liveness-lease-and-pid", kind="decision",
-         name="Liveness = unexpired lease AND live holder; pid<=0 degrades to lease-only",
+         name="[SUPERSEDED] Liveness = unexpired lease AND live holder; pid<=0 degrades to lease-only",
          payload={"rationale":
                   "Lease alone lets a crashed session block others until it runs out; PID alone "
                   "lets an idle session hold the repo for hours. Hook-taken locks have no usable "
@@ -183,7 +183,7 @@ DECISIONS = [
          ]),
 
     Node(id="hold-the-lock-through-the-unknown", kind="decision",
-         name="A shell takes the lock BEFORE it runs, and gives it back if it turns out to have read",
+         name="[SUPERSEDED] A shell takes the lock BEFORE it runs, and gives it back if it turns out to have read",
          payload={"rationale":
                   "The first draft of v1 detected shell writes only afterwards (PostToolUse), which "
                   "left a window: inside one tool call, two sessions could both write one checkout. "
@@ -219,7 +219,7 @@ DECISIONS = [
          ]),
 
     Node(id="a-refusal-must-be-actionable", kind="decision",
-         name="A refused session is told what is happening, what it may still do, and how to wait",
+         name="[SUPERSEDED] A refused session is told what is happening, what it may still do, and how to wait",
          payload={"rationale":
                   "The pessimistic hold (above) closed the write window and opened a worse hole in "
                   "the same stroke: a refused session could not WAIT. Waiting means running `sleep`; "
@@ -256,8 +256,8 @@ DECISIONS = [
          ]),
 
     Node(id="waiting-is-a-subscription", kind="decision",
-         name="A blocked session subscribes and gets on with something else; the gate mints the "
-              "waiter as a one-time ticket",
+         name="[SUPERSEDED] A blocked session subscribes and gets on with something else; the gate "
+              "mints the waiter as a one-time ticket",
          payload={"rationale":
                   "`lock_wait` (MCP) unblocked the session but blocked its TURN: it sits there. An "
                   "agent turn cannot be interrupted and nothing can push into it, so the only thing "
@@ -290,7 +290,7 @@ DECISIONS = [
          ]),
 
     Node(id="the-background-task-cannot-be-observed", kind="decision",
-         name="A backgrounded task holds the lock; it is never settled by a fingerprint",
+         name="[SUPERSEDED] A backgrounded task holds the lock; it is never settled by a fingerprint",
          payload={"rationale":
                   "Found while building the subscription, and it would otherwise have shipped as a "
                   "silent hole. A backgrounded tool call RETURNS IMMEDIATELY — the harness hands "
@@ -321,7 +321,7 @@ DECISIONS = [
          ]),
 
     Node(id="the-ticket-must-survive-the-shell", kind="decision",
-         name="The waiter's ticket is minted once per shell, and a test drives a real one",
+         name="[SUPERSEDED] The waiter's ticket is minted once per shell, and a test drives a real one",
          payload={"rationale":
                   "The gate mints the one command a blocked session may run — the background waiter "
                   "that lets it go and do something else (waiting-is-a-subscription). It minted a "
@@ -412,7 +412,7 @@ DECISIONS = [
          ]),
 
     Node(id="mcp-is-watched-never-gated", kind="decision",
-         name="The MCP channel is watched and never gated — the escape hatches all live on it",
+         name="[SUPERSEDED, by generalisation] The MCP channel is watched and never gated — the escape hatches all live on it",
          payload={"rationale":
                   "xag/repolock#3: an MCP tool that writes the working copy takes no lease. The "
                   "issue's own proposed fix — add `mcp__.*` to the matcher, or fail closed on "
@@ -471,6 +471,74 @@ DECISIONS = [
                                   "notebook kernel leaves the next session to discover it as a "
                                   "mangled rebase. Watching costs one fingerprint and turns a silent "
                                   "corruption into a named collision, which is the whole difference"}),
+         ]),
+
+    Node(id="information-not-exclusion", kind="decision",
+         name="Scratch the mutex entirely: nothing is ever refused, and information is the model",
+         payload={"rationale":
+                  "The user's sentence, which the first trial build implemented only by half: 'we "
+                  "are not blocking agents, just giving them a channel to negotiate and "
+                  "collaboratively prevent breaking each other's work.' The build kept four kinds "
+                  "of refusal anyway — the v1 mutex for undeclared sessions, a teaching-refusal, a "
+                  "scope gate on declared writes, a v1-lock check on scoped agents — on the "
+                  "argument that silence must stay safe for agents who never heard of the protocol. "
+                  "That argument had a flaw the user exposed by hitting it: THE COURIER REACHES "
+                  "NON-PARTICIPANTS TOO. The hook prints into every agent's context on every tool "
+                  "call, so an undeclared agent can be TOLD another agent is mid-change without "
+                  "being REFUSED anything. Making the cooperation bet for declared agents while "
+                  "refusing it for undeclared ones was incoherent — same bet, make it everywhere. "
+                  "And the race that interrupted the trial's very first pilot declaration was the "
+                  "kept-mutex biting, on cue.\n\n"
+                  "So v1 is deleted, not superseded-in-place: the lease-lock, the pessimistic hold, "
+                  "the tickets and the waiter, the takeover handoff, the Cursor adapter, and every "
+                  "test that pinned refusal behaviour. What remains never refuses: the claims map "
+                  "(scope.py — a conflicting declare is not RECORDED, which keeps the map coherent, "
+                  "but no tool call is ever blocked), the witness (witness.py — what actually "
+                  "happened, with violations named loudly to their author, remedy attached), the "
+                  "courier (hooks — the shared-checkout intro, the pre-write heads-up), and the "
+                  "drift check. Deadlock ceases to exist by construction: nothing blocks, so "
+                  "nothing can cycle, and §5's entire extend-deadlock apparatus evaporates.\n\n"
+                  "ONE deliberate exception, flagged to the user and accepted: the Stop boundary "
+                  "may block a DEPARTING session's handback, once, to ask it to commit/ignore/stash "
+                  "a dirty tree. It refuses no other agent anything, ever, and demoting it to a "
+                  "note would make it prose that cannot fire.\n\n"
+                  "What is knowingly given up: exclusion. Two agents CAN now write one region; the "
+                  "witness names it after the fact. Every failure in this library's recorded "
+                  "history was an agent that did not know another agent was there — ignorance, not "
+                  "malice — and information cures ignorance at a fraction of the price of a mutex "
+                  "that took the machine down four times (#4, #7, #10, #11) and whose only two "
+                  "genuine collisions-avoided were between sessions working DIFFERENT directories. "
+                  "Deterrence is explicitly NOT the mechanism (an agent has no memory across "
+                  "sessions, no reputation, no future to lose): visibility plus a witness is."},
+         links={"supersedes": ["hold-the-lock-through-the-unknown", "a-refusal-must-be-actionable",
+                               "waiting-is-a-subscription", "the-ticket-must-survive-the-shell",
+                               "mcp-is-watched-never-gated", "liveness-lease-and-pid",
+                               "the-background-task-cannot-be-observed"]},
+         children=[
+             Node(id="alt-keep-v1-as-degenerate-case", kind="alternative",
+                  name="Keep the mutex as the default for undeclared sessions (silence is `**`)",
+                  payload={"why": "the first trial build. Defensible on paper — non-participants "
+                                  "keep yesterday's protection — and incoherent in substance: it "
+                                  "makes the cooperation bet only for agents who opted in, while "
+                                  "the courier could inform the others just as well. In practice "
+                                  "it kept the whole lease/liveness machine alive for the sake of "
+                                  "a default, and that machine raced the trial's first pilot"}),
+             Node(id="alt-gate-only-declared-writes", kind="alternative",
+                  name="Hybrid: never gate shells or MCP, but still refuse an Edit into another's region",
+                  payload={"why": "the write is knowable there, so prevention is free of guessing — "
+                                  "but it splits the model down the middle: the same collision is "
+                                  "refused through one tool and witnessed through another, agents "
+                                  "learn the boundary is negotiable via the shell, and every "
+                                  "refusal message must explain the asymmetry. A heads-up BEFORE "
+                                  "the declared write keeps the information value of that moment "
+                                  "without the cage"}),
+             Node(id="alt-demote-stop-ask-to-a-note", kind="alternative",
+                  name="Make even the Stop dirty-tree ask a note, for purity",
+                  payload={"why": "a note at the moment a session is ALREADY LEAVING is prose that "
+                                  "cannot fire — the session is gone before anyone reads it. The "
+                                  "ask-once blocks nobody else, ever, and #11's lesson (three "
+                                  "routes: commit / ignore / stash) survives only if it can insist "
+                                  "on an answer exactly once"}),
          ]),
 
     Node(id="filesystem-is-the-namespace", kind="decision",
@@ -611,8 +679,12 @@ HYPOTHESES = [
     # It was written to catch #4's shape — a non-writing holder refusing many consecutive calls —
     # and #11 arrived as ONE refusal from a holder that HAD written. A falsifier calibrated to the
     # last war is a falsifier that watches the wrong door. The kill below is the widened one.
+    # MOOT 2026-07-15: information-not-exclusion deleted the hold this hypothesis was about.
+    # Nothing serialises any more, so neither starvation nor its absence can be observed. Kept: its
+    # amendment history (the #11 hole, the falsifier watching the wrong door) is the best record in
+    # this file of why falsifiers must be recalibrated when the design moves.
     Node(id="hyp-serialising-shells-does-not-starve", kind="hypothesis",
-         name="Holding the lock through a shell call does not starve a second session",
+         name="[MOOT] Holding the lock through a shell call does not starve a second session",
          payload={"claim": "A shell takes the lock for the duration of its own call and hands it "
                            "back if it read. So contention costs a second session only the length "
                            "of a command it happened to collide with — seconds, and a retry — "
@@ -699,9 +771,12 @@ HYPOTHESES = [
          ]),
 
     Node(id="hyp-renewal-on-activity", kind="hypothesis",
-         name="Renew-on-tool-call keeps live sessions from lapsing mid-work",
-         payload={"claim": "A 600s hook lease outlasts the longest single tool call, so an active "
-                           "session never loses its lock between calls.",
+         name="Renew-on-tool-call keeps live CLAIMS from lapsing mid-work",
+         payload={"claim": "The claim lease (scope.LEASE_SECONDS) outlasts the longest single tool "
+                           "call, so an active participant never falls off the map between calls — "
+                           "the lock died, but leases survive as the decay rate of information, and "
+                           "a participant that silently vanished from the map mid-task misleads "
+                           "everyone reading it.",
                   "cadence": "every hook call"},
          children=[
              Node(id="kill-renewal", kind="falsification",
@@ -712,10 +787,19 @@ HYPOTHESES = [
 ]
 
 DEBTS = [
+    # RESOLVED 2026-07-15 — both, by the same stroke, and neither was PAID: the claims they deviated
+    # from ceased to exist. `information-not-exclusion` deleted the mutex, so there is no exclusion
+    # for `mcp-writes-settle-late` to be a hole in — a debt is a deviation from the system's own
+    # claims, and the system no longer claims exclusion on any path. And the Cursor adapter — the
+    # hand-rolled wire format nobody had ever watched a real client emit, the textbook
+    # 'uninstrumented fake' — was DELETED rather than verified: the unsound thing was removed, which
+    # discharges the debt as honestly as paying it would have. Both kept, params grounded to record
+    # the resolution, because a ledger that quietly drops its history cannot show it was ever wrong.
     Node(
         id="cursor-settles-late",
         kind="debt",
-        name="The Cursor adapter holds a read's lock until its next hook call",
+        name="[RESOLVED: the adapter was deleted] The Cursor adapter held a read's lock until its "
+             "next hook call",
         payload={
             "note":
                 "Adapter #1 settles the speculative lock at PostToolUse — the instant the command "
@@ -731,10 +815,11 @@ DEBTS = [
         },
         params={
             "settles_at_post_tool": Quantity(
-                value=0, unit="adapter", provenance="not verified", grounded=False,
-                source="repolock/hooks/cursor.py::_catch_up — settles on the NEXT event, because "
-                       "Cursor's post-tool event name and payload were never checked against a "
-                       "running client"),
+                value=0, unit="adapter", provenance="resolved by deletion, 2026-07-15", grounded=True,
+                source="repolock/hooks/cursor.py no longer exists — the adapter was a wire format "
+                       "hand-rolled from memory and never once checked against a running client. "
+                       "Removing the unsound thing discharges the debt; a future Cursor adapter "
+                       "starts from OBSERVING Cursor, per verify-cursors-post-event"),
         },
         children=[
             Node(id="verify-cursors-post-event", kind="discharge",
@@ -751,7 +836,8 @@ DEBTS = [
     Node(
         id="mcp-writes-settle-late",
         kind="debt",
-        name="On the MCP path there is no mutex — a write is detected one call after it lands",
+        name="[RESOLVED: the mutex was deleted everywhere] On the MCP path there was no mutex — a "
+             "write was detected one call after it landed",
         payload={
             "note":
                 "A shell is HELD through (hold-the-lock-through-the-unknown), so two sessions "
@@ -778,10 +864,13 @@ DEBTS = [
         },
         params={
             "prevents_the_collision": Quantity(
-                value=0, unit="mcp-call", provenance="known-reachable, by construction", grounded=False,
-                source="repolock/hooks/common.py::settle_observed — the write is a FACT by the time "
-                       "this runs; the lock is claimed after it landed, and a live holder gets "
-                       "format_collision() instead of a mutex that held"),
+                value=0, unit="mcp-call", provenance="resolved by design change, 2026-07-15",
+                grounded=True,
+                source="information-not-exclusion deleted the mutex from EVERY path, so detection "
+                       "one call late stopped being a deviation and became the stated design. A "
+                       "debt is a gap between the system and its own claims; the claim is gone, and "
+                       "SPEC.md now says detection-not-prevention out loud where §7b used to forbid "
+                       "it"),
         },
         children=[
             Node(id="gate-mcp-on-a-declared-target", kind="discharge",
@@ -834,16 +923,18 @@ GATE = Node(
     name="What is allowed onto the write path of every session on a machine",
     payload={
         "note":
-            "repolock sits on the write path of every agent session on the machine. That is an "
-            "unforgiving place for an unsound thing, so this gate exists to stop one travelling "
-            "there quietly.\n\n"
-            "It is RED, and it names both reasons. The Cursor adapter settles its speculative lock "
-            "late, because nobody has ever watched Cursor emit an event. And on the MCP path there "
-            "is no mutex at all — only detection, one call late — because every escape hatch this "
-            "protocol has is an MCP call, and a gate there would stand in front of the off switch. "
-            "Discharge them by doing the work the discharges name: running the real client and "
-            "reading the tape; and gating on a declared write target once a harness gives us one. "
-            "Never by editing this file.",
+            "This library runs a hook on every tool call of every agent session on the machine. "
+            "That is an unforgiving place for an unsound thing, so this gate exists to stop one "
+            "travelling there quietly.\n\n"
+            "It is GREEN, for the first time, and it is worth recording HOW — because neither debt "
+            "was paid. Both dissolved when information-not-exclusion changed what the system "
+            "claims: mcp-writes-settle-late was a hole in a mutex, and there is no mutex left "
+            "anywhere for it to be a hole in; cursor-settles-late lived in an adapter that was "
+            "deleted rather than verified. A debt is a deviation from the system's own claims. "
+            "Changing the claims, out loud, in the spec, with the user driving, is a legitimate "
+            "way for a debt to die — quietly weakening the claims to launder a debt is not, and "
+            "the difference is whether the change is written where the next reader must see it. "
+            "It is: SPEC.md says detection-not-prevention on every path, as the design.",
     },
     links={"admits": ["cursor-settles-late", "mcp-writes-settle-late"]},
 )

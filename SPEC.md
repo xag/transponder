@@ -1,355 +1,205 @@
-# The repolock convention, v1
+# The shared-checkout convention, v2
 
-One developer, several AI agent sessions, one checkout. Git assumes the working tree has one
-author; agent harnesses pretend that is still true. This convention is the missing lock: a
-lockfile any agent on the machine can honor, regardless of vendor — the way `.git/index.lock`
-or EditorConfig work, as a *convention*, not a service.
+One developer, several AI agent sessions, one machine of shared checkouts. Git assumes a working
+tree has one author; agent harnesses pretend that is still true. This convention is the missing
+**information layer**: a claims map any agent on the machine can read and write, a witness that
+reports what actually happened, and a courier that carries both into every agent's context —
+regardless of vendor.
 
-This document is normative. The Python package in this repository is a reference
-implementation, not the definition. **MUST/SHOULD/MAY** as in RFC 2119.
+This document is normative. The Python package in this repository is a reference implementation,
+not the definition. **MUST/SHOULD/MAY** as in RFC 2119.
 
-## Scope: two failures, two mechanisms
+> **v1 of this spec described a lock.** It refused tool calls, held a mutex through every shell,
+> and took its own machine down four times (#4, #7, #10, #11) — every incident a *reader* or an
+> *innocent* refused, never a collision prevented that mattered: the only two real contentions in
+> its recorded history were sessions working different directories. v1 is deleted, not deprecated.
+> The history lives in git and in the ledger; the lessons that survive are baked in below.
 
-1. **Two writers colliding.** Mutual exclusion, via the lockfile (§2–§5).
-2. **A stale reader.** A session that only *read* a repo keeps reasoning from a picture of it;
-   a concurrent rebase silently invalidates that picture without corrupting anything. Detection,
-   via the commit anchor and the drift check (§6). No lock is involved.
+## 0. The model, in four sentences
 
-Enforcement is out of scope, deliberately: a lock a model must *choose* to take is a
-suggestion, because the offending session never chooses to. Each harness binds the convention
-in its own hook mechanism (§7).
+Agents **declare** where they will write; the declarations form a map, and the map never
+double-books a region. The **courier** delivers what an agent cannot see from inside its own
+context: who else is here, and that the file it is about to edit is inside someone's region. The
+**witness** observes every write and reports, loudly and with the remedy attached, the ones that
+land in another agent's region. **Nothing is ever refused** — the failure this convention prevents
+was never malice, it was an agent that did not know another agent was there, and information cures
+ignorance at a fraction of the price of a mutex.
 
-## 1. Where the lockfile lives
+### 0a. Why cooperation is a sound foundation, not a hope
 
-- Directory: `$REPOLOCK_DIR` if set, else `~/.repolock/locks/`. Implementations MUST create it.
-- The directory is deliberately **outside every repo**: a lock must work for a checkout that
-  is not a git repo yet, and must never appear in `git status` as an edit of its own.
-- One file per working copy. The working copy's identity is its **canonical path**: absolute,
-  symlinks resolved, case-normalized per platform (`realpath` + `normcase`).
-- Filename: `<basename>-<key>.json`, where `key` is the first 16 hex chars of the SHA-256 of
-  the canonical path (UTF-8). The basename is only for human readability of the directory;
-  the hash is the identity.
+Every agent on the machine works for the same human, who wants all of their work to survive. There
+is no adversary to model — and **deterrence is explicitly not the mechanism** (an agent has no
+memory across sessions, no reputation, no future to lose; "they risk being stomped back" is a hope,
+not an argument). The mechanism is *visibility plus a witness*: an agent that can see the other
+scopes has no reason to collide, and one that collides anyway is named immediately, rather than
+discovered a week later inside a mangled rebase.
 
-## 2. The record
+If this assumption is wrong, the convention is wrong — and the kill condition is mechanical:
+violation reports firing regularly, from agents that had seen the map (§8).
 
-A single JSON object. Writers MUST write it **atomically** (write a temp file in the same
-directory, fsync, rename) — a torn read is a lock held by nobody.
+## 1. The namespace is the local filesystem
 
-| field           | type            | meaning                                             |
-|-----------------|-----------------|-----------------------------------------------------|
-| `repo`          | string          | canonical working-copy path (§1)                    |
-| `session`       | string          | opaque id of the holder (harness session id)        |
-| `pid`           | int             | holder's process id, or `0` when none exists (§4)   |
-| `intent`        | string          | free text: what the holder is doing                 |
-| `acquired_at`   | float, epoch s  | when the lock was first taken                       |
-| `renewed_at`    | float, epoch s  | last activity (§3)                                  |
-| `expires_at`    | float, epoch s  | end of the current lease                            |
-| `lease_seconds` | float           | the declared lease length                           |
-| `base_commit`   | string \| null  | HEAD when the lock was taken — the handoff anchor   |
-| `idle_since`    | float \| null   | set when the holder went idle with a dirty tree (§5)|
-| `dirty_at_idle` | list of string  | `git status --porcelain` lines at that moment       |
+A **scope** is a set of **resources**; a resource is a **canonical absolute path** — `realpath` +
+`normcase`, forward slashes — in exactly two forms:
 
-Readers MUST treat an unparsable record as **no lock** (garbage to be overwritten), and MUST
-ignore unknown fields.
+| resource               | reserves   |
+|------------------------|------------|
+| `<canonical-path>`     | one file   |
+| `<canonical-path>/**`  | a subtree  |
 
-## 3. Leases, renewed by activity
+Agents spell paths relative to the checkout they name (`api/**` for `<repo>/api/**`; `**` alone is
+the whole checkout), and the implementation canonicalises before storing. **Overlap is the prefix
+relation** — decidable always — so a conflict MUST name the exact **intersection**: "come back
+narrower" is computed, never guessed.
 
-- A lock is **short-lived**, taken immediately before a write. The acquirer declares its lease
-  (reference default 900 s; hooks use 600 s; implementations MUST cap at 4 h).
-- The lease is renewed **by activity**: a harness hook renews on every tool call. A tool call
-  IS the activity — there is no daemon to supervise, and an idle session lets go on its own
-  because nothing renews for it.
-- Acquire is **reentrant**: the holder acquiring again is a renewal, so a session never
-  deadlocks against itself.
+One namespace, deliberately:
 
-## 4. Liveness: who still holds a lock
+- **general globs** (`src/*.py`) have no decidable overlap and MUST be rejected at declaration. A
+  scope system unsure whether two regions touch hands one region to two agents and tells each it
+  is alone.
+- **opaque names** (`port:3000`) are contracts no witness can check, and MUST be rejected until
+  one arrives *with* a witness.
+- **aliasing is dead by construction**: case, symlinks, junctions, `..` all canonicalise to one
+  string, so "whom do we inform?" is always answerable point-to-point from the map. Nothing is
+  ever broadcast.
+- paths git ignores are not reservable and are never observed — without this, `node_modules/`
+  makes every scope conflict with every other, and the convention dies of false positives.
 
-A lock **binds** while its lease is unexpired **AND** its holder still exists:
+### 1a. The index is a file, and that is why commits are safe
 
-- lease alone would let a crashed session block others until it ran out;
-- PID liveness alone would let an idle session hold the repo for hours;
-- each covers the other's blind spot.
+Agent A works `api/**`, agent B works `web/**`, both mid-edit — the whole point. A runs
+`git add -A && git commit` and sweeps B's half-finished work into A's commit. **That is the
+founding incident of this convention**, it cannot be prevented by inspection (knowing a command
+stages the whole tree means reading the command, which is undecidable — the one v1 lesson nothing
+here revisits), and source-path scopes alone hand it straight back.
 
-`pid <= 0` means "no PID was recorded" and MUST read as *cannot disprove liveness*: locks taken
-by a hook have no usable PID (the hook process exits immediately), and treating them as dead
-would get every hook-taken lock stolen on sight. A PID-less lock therefore degrades to
-**lease-only** liveness — which is why leases are short.
+The filesystem namespace dissolves it without adding anything: **the staging area was never
+anything but a file.** An agent that intends to commit SHOULD reserve `<repo>/.git/index` — an
+ordinary path with the ordinary overlap — immediately before the commit, and release it
+immediately after. Held for the life of a scope it makes every writer conflict with every other,
+which is the old mutex rebuilt; taken briefly, commits serialise by consent and nobody parsed
+anything. The witness backstops the agent that doesn't: a commit that swept another agent's paths
+is named, sha and all, with the recovery attached (§5).
 
-An acquire against a **binding** lock MUST be refused (verdict `held`). An acquire against a
-lapsed or dead lock MUST succeed as a **takeover, with a handoff** (§6). Lock operations MUST
-return verdicts, never raise: an exception in a hook is a session that cannot edit anything.
+## 2. The claims map
 
-## 5. Release, and the idle boundary
+- Claims live in one machine-global store (`$REPOLOCK_DIR`'s parent, `claims/`), **one file per
+  agent**, written atomically. Never a shared list: a list is read-modify-write, and a store that
+  loses a claim under contention loses it exactly when it matters.
+- A claim carries: `session` (the harness session id — the same one the hooks see), `scope`
+  (canonical resources), `intent` (free text, refreshed on renewal — a stale intent misleads the
+  agent reading the map to decide what to do), `acquired_at` / `renewed_at` / `expires_at` /
+  `lease_seconds`.
+- **Leases are the decay rate of information, not a hold.** Activity renews (a tool call IS the
+  activity; nothing needs a daemon); an agent that crashed or wandered off simply fades from the
+  map. Readers MUST treat an unparsable claim as no claim, and MUST ignore unknown fields.
+- The map MUST NOT double-book: a `declare` or `extend` whose scope overlaps a live claim is not
+  recorded, and the answer names the holder, the intent, the exact intersection, and what is free.
+  **This refuses a map entry, never a tool call** — the agent's work is not blocked by anything,
+  anywhere.
+- `declare` is all-or-nothing (a scope granted entire or not at all); `extend` widens and never
+  blocks; `release` narrows or clears. Since nothing ever waits on anything, deadlock does not
+  exist in this convention — there is nothing to cycle on.
 
-- Release MUST be refused while the working tree is dirty (verdict `dirty`), unless forced.
-  "Commit fast" as a rule, not an aspiration: handing over a tree with someone's half-finished
-  edits is strictly worse than making the next session wait.
-- Release MUST be idempotent: releasing an unheld lock is success, so hooks, tools and
-  crash-recovery can all release without coordinating.
-- Only the holder releases; anyone else's release MUST be refused (`denied`) unless forced.
-  Force is the human's deliberate override, never the routine path.
-- When the holder goes **idle** (hands control back to its human):
-  - clean tree → release; holding would be pure obstruction;
-  - dirty tree → the handback itself MUST be refused, where the harness allows it (§7, obligation 5). The
-    holder is told to **commit** its work, **ignore** the artifact, or **stash** the scrap; the
-    lock then releases itself against the clean tree, and no idle-dirty lock is ever created.
-  - dirty tree, and the holder declined when asked → record `idle_since` and `dirty_at_idle` and
-    let the lease lapse on its own schedule. The takeover handoff then says exactly what was left
-    behind. This is the fallback, not the rule: a gate that will not let a session hand back to
-    its human is worse than any lock it could be protecting.
+## 3. The courier
 
-### 5a. Why the handback is refused rather than absorbed
+An agent turn cannot be interrupted and nothing can push into it. Two delivery paths exist, and
+they are the only two:
 
-The rule here used to stop at "dirty tree → hold, and let the lease lapse", on the grounds that
-handing over half-finished edits is worse than making the next session wait. Both halves of that
-are true and the conclusion was still wrong: it accepted the dirty handback as a given, and then
-charged everybody else for it.
+- **a working agent**: the adapter prints into its context on every tool call. This is how all
+  notes below arrive;
+- **a parked agent**: reachable when it next works. (A subscribe-able listener — the old waiter,
+  generalised — MAY be added when negotiation between live agents needs it; nothing below depends
+  on it.)
 
-In production (xag/repolock#11) that meant a session parked on a checkout whose only "dirt" was one
-untracked artifact directory — `?? .devdata/`, not work at all — and the next session was refused
-`ls && git log`, a pure read, for ten minutes. An untracked artifact directory makes a tree dirty
-*permanently*, so every session that ever stopped in that repo parked a full-lease lock on it. A
-livelock generator, in the shape of a safety feature.
+The courier MUST deliver:
 
-An implementation MUST therefore offer all three routes, not just "commit": an artifact must be
-**ignored** (committing it is a bug, and stashing it may break a process that is using it), work
-must be **committed**, and a scrap should be **stashed**. A gate that gives the wrong instruction
-for two of the three things actually in a dirty tree is a gate that gets ignored.
+1. **the introduction**, once per (session, checkout): who else is working here and where, and how
+   to get on the map. Once — a note printed forever is a note nobody reads;
+2. **the heads-up**, when a *declared* write (an Edit/Write tool carries its path) is about to
+   land inside another agent's region — information at its most valuable moment, before the write,
+   and still not a gate;
+3. **the drift note** (§6), when history moved under what the session remembers.
 
-## 6. The anchor, the handoff, and the drift check
+A participant writing *unclaimed* ground SHOULD have its claim quietly extended — the map should
+say what participants are actually touching.
 
-- Every lock taken in a git checkout MUST record `base_commit` = HEAD at acquisition.
-- A takeover (§4) MUST hand the next writer: the previous session and intent, why its claim
-  ended, the base commit, current HEAD, the commits between them, whether **history was
-  rewritten** (the base commit no longer exists in the object graph), and any uncommitted files.
-- The **drift check** is read-side and lock-free: given the HEAD a session last saw, report
-  `current`, `moved` (with the commits between), or `rewritten` (the seen commit no longer
-  exists — everything the session remembers about this repo is suspect). Harnesses SHOULD run
-  it at session start and on each return of control, remembering HEAD per (session, repo).
+## 4. The witness
+
+For every tool whose effect is not declared (a shell, an MCP call), the adapter MUST take a
+fingerprint of the checkout before the call (HEAD + porcelain + the stat of every dirty path — the
+stat is load-bearing: an already-dirty file edited again moves no status line, but the bytes move)
+and diff it after. A **moved fingerprint names the paths that were written, as a fact**. Commits
+are chased into the object graph (`git log --name-only`): a file created and committed inside one
+tool call is dirty at neither end, and it is precisely the file that matters (§1a).
+
+- unmoved (almost every call): nothing is said, nothing is charged;
+- moved, inside the writer's own scope: silent, lease renewed;
+- moved, outside every claim: a nudge to declare it (participants only);
+- moved, **inside another agent's region**: a violation (§5).
+
+Known limits, stated rather than hidden: a backgrounded task's writes land after its hook window
+and are attributed to nobody; the witness sees only what git tracks; and between one session's
+Post and its next Pre, another process's writes are that process's to witness, not this one's.
+
+## 5. Violations
+
+A violation is not prevented — nothing is — so it MUST NOT be silent. The report goes to the agent
+that wrote, immediately, and MUST carry: the paths, the victim, the victim's intent, and **the
+remedy**. Where HEAD moved (their work is inside your commit), the remedy is exact — `git reset
+--soft HEAD~1`, unstage their paths, stage yours **by name, never `-A`** — because a commit is the
+one violation that is cleanly recoverable, and an accusation without a recovery is half a message.
+
+## 6. The drift check
+
+Read-side, lock-free, and the one part of v1 that was never wrong: given the HEAD a session last
+saw, report `current`, `moved` (with the commits between) or `rewritten` (the seen commit no
+longer exists — everything the session remembers about this repo is suspect). Adapters SHOULD run
+it at session start and on each return of control.
 
 ## 7. Adapter obligations
 
-A harness adapter MUST:
+1. **never refuse a tool call.** The one permitted exit-2 is the Stop boundary (obligation 6);
+2. deliver the courier's three notes (§3) and the witness's reports (§4, §5) through the harness's
+   own channel into the agent's context;
+3. key claims and witness on **the repo that owns the written path**, never the session's cwd;
+4. cover **every shell the harness exposes** and its MCP traffic in the witness's matchers — a
+   tool the witness does not see is a write that never happened;
+5. detect its own blind half: a before-picture that is never settled means the after-hook is not
+   wired, and the adapter MUST say so, once, rather than let anyone believe they are covered;
+6. at the Stop boundary: release the session's claims in that checkout against a clean tree; if
+   the tree is dirty and the session was a participant there, it MAY block the stop **exactly
+   once** to ask for commit / ignore / stash — three routes, because "commit your work" is the
+   wrong instruction for an artifact and for a scrap. Asked once and declined, the claims stay on
+   the map until the lease lapses: the work is still there, and the map should say so;
+7. **fail open, silently for the flow, loudly for the eye**: a crashing adapter must never block
+   work — losing a note is an inconvenience; blocking would be the lock's disease in the
+   informer's coat;
+8. offer a **kill switch** that reaches sessions already running (a file checked on every call,
+   `~/.repolock/DISABLED`) and that does not need a terminal (an MCP tool). An informer cannot
+   wedge the machine, but it can be wrong, noisy or slow, and off must mean off, everywhere,
+   instantly. "On" must re-wire the hooks as well as disarm — reporting on while feeding nothing
+   is the worst of the three states.
 
-1. **acquire before a write it is told about.** A file-editing tool names the file it will write.
-   That is ground truth: the adapter MUST acquire-or-renew before it runs, on the repo that owns
-   **that path** — never on the session's cwd, which is a different repo often enough to matter,
-   and is no repo at all when the target is a scratch file;
-2. **never guess about a write it is not told about.** For a shell — or any tool whose effect is not
-   declared — an adapter MUST NOT decide from the command text whether it writes (§7a). It MUST
-   instead observe the working copy before and after, and treat a **moved fingerprint** as the write
-   (§7b);
-3. block when the verdict is `held`, and say so in the terms obligation 8 sets out;
-4. surface the handoff verbatim on takeover;
-5. **refuse the dirty handback** when the session returns control to the human (§5, §5a), where the
-   harness gives it the means to. A clean tree releases. A dirty one MUST be refused, with the three
-   routes spelled out (commit / ignore / stash), so the lock is never *parked* on a mess. An adapter
-   MUST ask exactly **once** — harnesses cap or override a stop-hook that blocks repeatedly, and a
-   session that cannot hand back to its human is a worse failure than any lock — and then fall back
-   to hold-and-lapse. Where a harness's stop event cannot refuse (it is a notification, not a gate),
-   the adapter MUST fall back to hold-and-lapse and MUST say so, rather than claim a guarantee it
-   cannot deliver;
-6. run the drift check when a session starts or resumes;
-7. cover **every shell the harness exposes**, not the one its authors use. A harness that offers both
-   `bash` and `powershell` and watches only the first is unguarded on the platform where the second
-   is the default;
-8. **make the refusal actionable.** A block MUST tell the refused session: what of ITS work was
-   refused; who holds the checkout and **what that holder is doing right now** (an intent refreshed
-   on every renewal — a stale one misleads the session reading it to decide whether to wait);
-   what the holder has already touched; when the lease frees, and that activity extends it; what is
-   **still permitted** (reading tools, every other repo); and **how to wait**. "Session 8663de9b
-   (Bash)" is an ID and a tool name, not information, and a session given only that will spin;
-9. **provide a way to wait through a channel it does not gate — and a way to wait that does not mean
-   waiting around.** This is not a nicety, it is a hole the lock itself opens: a refused session
-   cannot wait by itself, because waiting means running `sleep`, `sleep` is a shell, and the shell
-   is exactly what was refused. (This is xag/repolock#4's cruellest detail — "`sleep` was also a
-   write" — arriving through the new door.) An adapter that refuses a session and then refuses to
-   let it wait has not built a lock, it has built a wall. Two forms, and both are owed:
+## 8. What kills this design
 
-   - **block**, for a session with nothing else to do: the reference implementation exposes
-     `lock_wait` as an MCP tool, because the hook does not gate MCP tools — which is also the only
-     reason #4 could be reported at all, by sessions that could not run a shell. §7c turns that
-     from a happy accident of the matcher into a requirement, and says what it costs;
-   - **subscribe**, for a session that has other work: an agent turn cannot be interrupted and
-     nothing can push into it, so the ONLY thing that can wake one is its harness noticing that a
-     background task it launched has exited. The adapter MUST therefore let a blocked session launch
-     a waiter that sleeps on the lock and dies when the lock frees. Since that waiter is itself a
-     shell — in the very repo the session is blocked from — the gate MUST issue it as a **one-time
-     ticket**: a command the gate mints, and then allows by **byte equality against the string it
-     wrote itself**. That is a capability, not a classification: append one character and it is a
-     different string, matches nothing, and is gated like any other command. Recognising your own
-     token is not the same act as understanding someone else's command, and the distinction is what
-     keeps this from being #7 again.
+Falsifiable, off the tape, and each one cheap:
 
-     The ticket MUST be **executable by the shell it is handed to**, and an implementation MUST have
-     a test that runs it in a real one. This is not pedantry; it is xag/repolock#10. The first
-     implementation minted a single string with the interpreter path unquoted and spelled with
-     Windows backslashes; bash ate every backslash as an escape (`command not found`, exit 127) and
-     the waiter had never run once in the library's history. Because the refusal tells the session to
-     launch it in the *background*, dying instantly was indistinguishable from waking because the
-     lock freed: the escape hatch failed by reporting success. Where a harness may pick more than one
-     shell, no single string suffices (a quoted path is inert in PowerShell without `&`; `&` is a
-     syntax error in bash), so the gate MUST mint one spelling per shell, label them, and accept all
-     of them — each is still a string it wrote itself;
-10. **fail open, loudly**: a crashing adapter must never wedge the machine — an unguarded write is
-   bad, a laptop where nobody can edit anything is worse, and silent is worst;
-11. offer a **kill switch** that reaches sessions already running, **and that does not need a shell.**
-   Both halves follow from *when* it gets used, which is always the worst possible moment:
-   - it must reach a running session. A harness snapshots its hooks when a session starts, so
-     uninstalling by editing config cannot free the sessions that are stuck — which are precisely the
-     ones you are trying to free. A file the adapter checks on every call can.
-   - it must not be a shell command. When the lock misfires it **refuses your shell** — that is what
-     a refusal *is* — so an off switch spelled as a terminal command is unreachable exactly when it is
-     needed. The hook does not gate MCP tools, so that is where the switch belongs; a CLI is a
-     convenience for a human, never the mechanism.
-
-   And **"on" must mean on**: an implementation that re-enables the lock without checking that its
-   hooks are still wired reports itself enabled while guarding nothing, which is worse than being
-   off, because it will be relied upon.
-
-## 7a. Write detection is not decidable, and MUST NOT be attempted
-
-An adapter MUST NOT classify a shell command as a write or a read by reading it. **v0.1 required
-exactly that, and it was wrong in both directions — not by accident, but by construction.**
-
-*It called writes reads.* `npm install`, `make`, `uv run ruff --fix .`, `python scripts/codegen.py`,
-`./deploy.sh` all mutate the working copy and name nothing a list can hold. Deciding whether an
-arbitrary program writes to a tree requires running it. No list closes this; the tail is the whole
-space of programs.
-
-*It called reads writes.* `print("a -> b")` was read as a redirect into a file named `b")`, so a
-session doing nothing but reading took the lock, and could be refused one (#7). A quoting-aware
-parser does not save it either: `git log --format='%h -> %s'` is a read under a POSIX shell and a
-**write** under `cmd.exe`, where single quotes do not quote and the `>` redirects. The same text has
-opposite effects in two shells, so no parser can be correct about it without knowing which shell will
-run it and how that shell quotes — at which point it is an interpreter, not a gate.
-
-And a false positive is not free. That was the most expensive sentence this document ever contained.
-It costs the *lease*, which is the only resource in the protocol: a reader that takes the lock holds
-the working copy against a session that wants to change it, and a fleet where every session reads
-first is a fleet that locks itself out (#4).
-
-## 7b. What replaces it: observe the repo, do not predict the command
-
-The right question is not *"was this a write?"* but *"did the repo change?"* — and that one is
-answered exactly, by looking.
-
-A **fingerprint** of a working copy is: its HEAD, plus its porcelain status, plus the size and mtime
-of every path the porcelain names. (The stat is load-bearing: a file that is already ` M` stays ` M`
-when it is edited again — the status line does not move, but the bytes do. Files git ignores are
-deliberately not seen; the lock protects what git tracks.)
-
-An adapter MUST:
-
-- **take the lock before running a tool whose effect it was not told** — a shell — without forming
-  any opinion about what the command does. Not because it is believed to write: because acquiring is
-  how you find out safely. A live holder in the way means `held`, and the tool is refused;
-- take the **fingerprint** at that moment, and again once the tool returns;
-- *unmoved* => it read, whatever it looked like. **Release the lock immediately.** A reader holds the
-  working copy for the duration of its own command and not one second longer;
-- *moved* => it wrote. Keep the lock, and hold it while the session stays active — exactly as a
-  declared write does. Nobody had to recognise `./deploy.sh` for this to be true.
-
-### A backgrounded tool MUST NOT be settled by observation
-
-A task the harness runs in the background **returns immediately**: the tool call hands back a task
-id, the "after" hook fires at *launch*, and the fingerprint has not moved — because the command has
-not done anything yet. An adapter that settles on that picture will release the lock and let the
-process write the working copy unguarded for as long as it runs (`npm run dev`, a test watcher, a
-build). There is nothing to observe, and observing anyway is worse than not looking: it produces a
-confident wrong answer.
-
-So: when the harness **declares** a task backgrounded (a field in the tool input — a fact, not a
-command to be read), the adapter MUST hold the lock and MUST NOT settle it. The lease and the
-session's own activity carry it, and the idle boundary (§5) decides at the end. An adapter that
-cannot see the end of a thing it started must not pretend it has.
-
-The release of an unneeded lock MUST NOT be refused by a dirty tree. The dirty-tree refusal (§5)
-guards the *idle boundary*; here the fingerprint proves this session changed nothing, and holding a
-checkout hostage over someone else's uncommitted work, having written nothing, is #4 with a hat on.
-
-### What this costs, and what it does not
-
-Two sessions cannot run shell commands against one checkout at the same instant. That is not a
-defect in a mutex; it is a mutex. The cost is bounded by the length of the command they collided
-with, and it is emphatically **not** #4: #4's disease was a reader minting a ten-minute *lease* and
-holding the repo while it did nothing. Reading tools that are not shells (`Read`, `Grep`, `Glob`)
-are not gated at all, so a refused session can always still inspect the repo and diagnose the
-refusal — the escape route #4's victims did not have.
-
-An earlier draft of v1 did NOT hold through the unknown: it detected shell writes only afterwards
-and *reported* a collision it had failed to prevent. That leaves a window, reachable by
-construction, in which two sessions write one checkout — and a known-reachable hole in a mutex is
-not a residual risk, it is the absence of the mutex on that path. It was rejected. An adapter MUST
-NOT implement it.
-
-## 7c. The ungated channel: one class of tool MUST NOT be gated, and it is watched instead
-
-Every obligation above assumes the adapter may refuse a tool. This one says where it may not, and
-it is not an oversight being excused after the fact — it is forced, by the rest of the protocol.
-
-**A harness's out-of-process tool channel (in Claude Code and Cursor: MCP) MUST NOT be gated.** Not
-"is not yet"; MUST NOT. Three of this document's own requirements are calls on that channel, and all
-three are needed at exactly the moment the lock is doing damage:
-
-- obligation 9 — the blocked session's **blocking wait**. It cannot wait by itself: waiting means
-  `sleep`, `sleep` is a shell, and the shell is what was refused;
-- obligation 11 — the **off switch**, which "must not be a shell command", because when the lock
-  misfires it refuses your shell;
-- obligation 8's third route — **"file an issue and move on"**, which is how xag/repolock#4 (a lock
-  that had refused every shell on the machine) came to be reported at all.
-
-A gate on this channel stands in front of all three. There is no ordering of these requirements in
-which it is safe: the tool that turns the lock off cannot be reachable only when the lock is off.
-
-So the adapter **MUST watch that channel rather than gate it**, and the difference is exact:
-
-- take the fingerprint (§7b) before such a call and again after it;
-- *unmoved* → nothing happened. **Take no lock**, refuse nothing, charge nothing. This is almost
-  every call: a mail search cannot write a working copy;
-- *moved* → that tool wrote, as a fact. The session **MUST take the lock**, and holds it exactly as
-  a shell that wrote does;
-- *moved, and another session holds the lock* → the two have written one checkout. The adapter MUST
-  say so, to the session that did it, **naming the holder and telling it to stop writing**. It
-  cannot undo the write; it can refuse to let it be silent.
-
-An adapter MUST NOT watch its own lock tools this way. A blocking wait sits there *on purpose* while
-the holder works, so the tree moves under it by design, and an adapter observing across it would
-report the holder's honest work as its own collision.
-
-### What this costs, stated plainly
-
-**This is detection, not exclusion, and on this one path the mutex does not hold.** §7b calls that,
-for a shell, "not a residual risk but the absence of the mutex on that path", and refuses to ship
-it. The judgement differs here for one reason and it should be checked rather than trusted: on the
-shell path, holding through the unknown costs a colliding session the length of one command. On this
-path it would cost the protocol every one of its escape hatches — and a lock whose off switch is
-behind the gate is not a safer lock, it is an unrecoverable one.
-
-An implementation MUST therefore carry this as a **stated, gated debt**, not as a caveat and not as
-a hypothesis: the hole is known-reachable, so it is not a belief awaiting evidence. It is discharged
-if and when a harness gives the channel a *declared* write target — a path in the tool input, the
-way `Edit` carries one — at which point that tool joins obligation 1 and is gated before it runs,
-with no guessing and no window.
+| the claim | what kills it |
+|---|---|
+| agents contain their work once containment is visible | violation reports firing regularly from agents that had seen the map |
+| the map is used at all | checkouts shared for days with zero declarations — the notes are being ignored, and this is decoration |
+| the witness sees every write that matters | a tape whose settle shows an unmoved fingerprint across a call after which `git status` differs |
+| information suffices — the loss of exclusion was affordable | an out-of-scope write destroying work that `git revert` could not bring back. **One** is enough; that is the outcome the deleted mutex existed to prevent, and it would mean the trade was wrong rather than merely cheap |
 
 ## Non-goals
 
-- **Not a network lock.** One machine, one filesystem. Advisory across NFS is out of scope.
-- **Not sandboxing.** A process that ignores the convention can still write; the convention is
-  for cooperating harnesses, and enforcement strength comes from their hooks.
-- **Not a replacement for worktree isolation.** Where a harness can give each session its own
-  worktree, that is the better answer; this convention covers what worktrees don't reach —
-  interactive sessions deliberately pointed at the same checkout, mixed-vendor fleets, and the
-  stale-reader drift check.
-- **Not a lock between a session and its own subagents, and this is deliberate.** A subagent's tool
-  calls reach the hook carrying the **parent's** session id (verified against a real run, not
-  assumed). Acquire is reentrant, so a parent that holds the lock *renews* when its child writes.
-
-  It has to be this way. If a subagent had an id of its own, a parent holding the lock would refuse
-  its own child **while blocking on that child's result** — not contention but a deadlock, and one
-  that neither a wait nor a ticket can break, because the holder is the very thing being waited for.
-
-  The price: a session and all its subagents are **one holder**, so the convention does not
-  arbitrate between two subagents of the same session running in parallel against one checkout.
-  That is the harness's problem, and the harness has the better answer for it (give each agent its
-  own worktree). A lock cannot fix intra-session concurrency without deadlocking on it.
+- **Not enforcement.** A process that ignores the convention writes freely; the convention is for
+  cooperating harnesses, and §0a is the argument for why that is enough. If it is not, §8 will say
+  so before anyone loses much.
+- **Not a network protocol.** One machine, one filesystem.
+- **Not a replacement for worktree isolation.** Where a harness can give each agent its own
+  worktree, that is strictly better; this covers what worktrees don't reach — sessions
+  deliberately pointed at one checkout, mixed-vendor fleets, and the drift check.
+- **Not arbitration between subagents.** A subagent's tool calls carry its parent's session id
+  (verified against a real run), so one session and its subagents are one participant on the map.

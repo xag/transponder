@@ -1,45 +1,35 @@
-"""The Claude Code hook that makes the repo lock binding instead of advisory — adapter #1.
+"""The Claude Code adapter: the courier and the witness, wired into the harness — adapter #1.
 
-An MCP tool alone would be a suggestion. The session that rebases `main` underneath another session
-would never have called `lock_repo` — nobody had told it to. What makes a lock mean something is a
-gate the model cannot forget to walk through, so the enforcement lives here, in the harness, and the
-model never has to remember anything.
+This hook used to be a gate. It refused tool calls, held a mutex through every shell, and took the
+machine down four times doing it (#4, #7, #10, #11). It is now an information layer, and the rule
+that replaced all of that fits in one line:
 
-Four events, and the split between the first two is the whole of v1 (see hooks/common.py):
+    **No tool call is ever refused.** Not for an undeclared session, not for a write into someone
+    else's region, not for anything. exit 2 exists in exactly one place — the Stop boundary, where
+    a DEPARTING agent is asked once not to leave a dirty tree behind. That blocks no other agent,
+    ever.
 
-  PreToolUse   Edit/Write/NotebookEdit say WHICH FILE they will write. That is ground truth, so the
-               lock is taken before the write, on the repo that owns that file. Held by someone
-               live => exit 2, which blocks the tool and hands the reason back to the model.
+Four events, two jobs:
 
-               A shell says nothing we can trust. We do not read its command text — that guess was
-               wrong in both directions (#4, #7) and is not fixable. We refuse it only against a
-               live holder with a dirty tree, take the before-fingerprint, and let it run.
+  PreToolUse   the courier: introduce a shared checkout (once), warn when a declared write is about
+               to land in another agent's region — information at its most valuable moment, and
+               still not a gate. For shells and MCP calls, take the witness's before-picture.
 
-  PostToolUse  the after-fingerprint. Moved => that tool wrote, as a fact; take the lock (and if
-               someone else holds it, we have just collided — say so). Unmoved => it was a read,
-               whatever it looked like, and it is charged nothing.
+  PostToolUse  the witness: diff the picture. Unmoved => it read, nothing is said. Moved into
+               another agent's declared region => the loudest thing this library says, with the
+               remedy attached — a violation is a fact, not a guess, and it must not be silent.
 
-               An MCP tool goes through both events and is refused by neither: it is WATCHED, not
-               gated. The protocol's own escape hatches are MCP calls — the off switch, the waiter,
-               and the blocked session's "file an issue and move on" — so a gate here would stand in
-               front of every way out of a misfiring lock. SPEC.md §7c states the trade in full.
+  Stop         release this session's claims here against a clean tree; ask ONCE about a dirty one.
 
-  Stop         the model is handing control back to the human. Clean tree => release (a session
-               waiting on someone at lunch must not starve every other session). Dirty tree => hold,
-               mark it idle, let the declared lease run out; handing over a checkout full of
-               half-finished edits is worse than making the next session wait.
-
-  SessionStart the read-side check: compare the HEAD this session last saw against the HEAD that is
-               there now, and say so if history moved. No lock involved.
+  SessionStart the drift check: has history moved under what this session remembers?
 
 Install: a `hooks` block in ~/.claude/settings.json (user scope, so every repo on the machine is
-guarded, not just one) wiring PreToolUse and PostToolUse (matcher Edit|Write|MultiEdit|NotebookEdit|
-Bash|PowerShell|mcp__.* — the shells BOTH have to be there; on Windows PowerShell is the one that
-gets used), Stop, and SessionStart to run this script via a python that can import `repolock`, by
-absolute path — at user scope $CLAUDE_PROJECT_DIR points at whatever project the session is in.
+covered) wiring all four events — `python -m repolock.toggle on` writes it. The matchers include
+`mcp__.*` so MCP calls are witnessed; they are never, under any circumstance, refused.
 
 Kill switch: `~/.repolock/DISABLED` (see env.disabled) makes every event a no-op, including in
-sessions that already snapshotted the hooks and cannot be reached by editing settings.json.
+sessions that already snapshotted their hooks. An informer cannot wedge the machine the way the
+lock could, but it can be wrong or noisy, and off must still mean off, everywhere, instantly.
 """
 
 from __future__ import annotations
@@ -49,40 +39,31 @@ import os
 import sys
 
 try:
-    from repolock import env, lock, scope
+    from repolock import env
     from repolock.hooks import common
 except ImportError:                               # run straight from a checkout, uninstalled
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    from repolock import env, lock, scope
+    from repolock import env
     from repolock.hooks import common
 
-# The tools that tell us what they will write. The ONLY place a write is known in advance — and the
-# input carries the path, so the lock target is a fact too. Everything else is "unknown", including
-# every shell, and unknown is no longer a synonym for either "read" or "write".
+# The tools that declare what they will write — the input carries the path, so the heads-up can
+# fire BEFORE the write. Everything else is observed after the fact, because v1 §7a's proof stands:
+# what a shell will touch is not decidable from its text, and this library no longer guesses.
 WRITING_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 
-# Our OWN MCP tools, matched on the tool's name rather than its server's, because the server can be
-# registered under any name the user likes. These are never watched and never gated: `lock_wait` in
-# particular blocks for minutes ON PURPOSE, waiting for the holder to finish — so the tree moves
-# under it by design, and observing across it would report the holder's honest work as our own
-# collision. They also touch ~/.repolock and never the working copy, so there is nothing to see.
-OUR_MCP_TOOLS = {"lock_status", "lock_wait", "lock_drift", "force_unlock", "lock_debug",
-                 "lock_disable", "lock_enable", "lock_switch",
-                 # The channel itself (SPEC-v2 §2). These four were MISSING from this set in the
-                 # first trial build, which combined with a mis-ordered deny to produce the worst
-                 # sentence in this library's history: the refusal told a blocked agent "the way
-                 # out is declare_scope" and then gated declare_scope. The door out was locked
-                 # from the outside, and the protocol could never gain a second participant.
+# Our OWN MCP tools, matched on the tool's name rather than its server's (the server can be
+# registered under any name). Skipped entirely: they operate on ~/.repolock, never on a working
+# copy, so there is nothing for the witness to see and no reason to spend two git calls looking.
+OUR_MCP_TOOLS = {"lock_drift", "lock_disable", "lock_enable", "lock_switch",
                  "declare_scope", "extend_scope", "release_scope", "scopes"}
 
 
-def _watched_mcp(tool: str) -> bool:
-    """An MCP tool we take a fingerprint around. Never one we would refuse — see common.observe()."""
-    return tool.startswith("mcp__") and tool.rsplit("__", 1)[-1] not in OUR_MCP_TOOLS
+def _skipped_mcp(tool: str) -> bool:
+    return tool.startswith("mcp__") and tool.rsplit("__", 1)[-1] in OUR_MCP_TOOLS
 
 
 def _deny(reason: str) -> None:
-    """Exit 2 blocks the tool call and feeds stderr back to the model as the reason."""
+    """Exit 2 blocks a call and feeds stderr back to the model. ONE caller: the Stop boundary."""
     print(reason, file=sys.stderr)
     sys.exit(2)
 
@@ -92,37 +73,21 @@ def _say(msg: str) -> None:
 
 
 def _record() -> None:
-    """Arm the recorder immediately before the first call into `lock` — never at the top of main().
-    The boundary being recorded IS the lock; a hook call that touches no lock has nothing to record,
-    and installing eagerly taxed every read with a ~110ms flight-recorder import.
-
-    A MISSING recorder must never cost the lock. `flight-recorder` is an optional extra and
-    recording is on by default, so a plain `pip install .` has no recorder — and until this
-    try/except existed, the ImportError travelled up into main()'s fail-open handler and every hook
-    call no-oped. The lock looked installed, printed a line to stderr nobody reads, and guarded
-    nothing. An optional dependency that silently disables the whole tool when it is absent is not
-    optional; it is a hard dependency with a bug.
-    """
+    """Arm the recorder immediately before the first call into scope/witness — never at the top of
+    main(): a hook call that touches neither has nothing to record, and installing eagerly taxed
+    every call with a ~110ms import. A MISSING recorder costs the tape, never the courier."""
     if not env.recording():
         return
     try:
         from repolock import flight
     except ImportError:
-        return                            # no recorder installed: run without a tape, not without a lock
+        return
     flight.install()
 
 
 def _intent(payload: dict) -> str:
-    """What this session is about to do, in words the NEXT session can act on.
-
-    The refusal used to read `session 8663de9b (Bash)`, which tells a blocked session nothing at all
-    — it cannot judge whether to wait 10 seconds or go and do something else. So the intent carries
-    the target: the file being edited, or the command being run.
-
-    Note carefully what this is NOT. The command text is recorded to be *shown to a human or another
-    agent*. Nothing branches on it. The moment anything in this library decides something by reading
-    a command, we are back to #7 and #4 — see hooks/common.py.
-    """
+    """What this session is doing, in words another agent can act on. Recorded to be SHOWN —
+    nothing branches on it; the moment anything decides by reading a command we are back in #7."""
     tool = payload.get("tool_name") or "tool"
     ti = payload.get("tool_input") or {}
     path = ti.get("file_path") or ti.get("notebook_path")
@@ -136,175 +101,70 @@ def _intent(payload: dict) -> str:
 
 
 def _target_path(payload: dict) -> str:
-    """The file a declared write names. Ground truth, and the only reason SPEC-v2 §6 can still
-    PREVENT rather than merely witness."""
     ti = payload.get("tool_input") or {}
     return ti.get("file_path") or ti.get("notebook_path") or ""
 
 
 def _target(payload: dict) -> tuple[str | None, bool]:
-    """(repo, known_write). The repo a tool is about to act on, and whether we KNOW it writes.
-
-    For a file-editing tool the repo comes from its own file_path — not from cwd, which is a
-    different repo often enough to matter (#8). For anything else it is the repo the session sits
-    in, and all we can say is that we do not know.
-    """
+    """(repo, declared_write). For a file-editing tool the repo comes from its own file_path — not
+    from cwd, which is a different repo often enough to matter (#8)."""
     tool = payload.get("tool_name") or ""
-    tool_input = payload.get("tool_input") or {}
     if tool in WRITING_TOOLS:
-        path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
-        return common.repo_of(path), True
+        return common.repo_of(_target_path(payload)), True
     return common.repo_root(payload.get("cwd") or os.getcwd()), False
 
 
 def pre_tool_use(payload: dict) -> None:
     tool = payload.get("tool_name") or ""
-    if tool.startswith("mcp__") and not _watched_mcp(tool):
-        return                       # our own lock tools. Out before we spend a git call or an
-                                     # import on them: they cannot move the tree, and one of them is
-                                     # the off switch — the last thing to make slow or clever.
-    repo, known_write = _target(payload)
+    if _skipped_mcp(tool):
+        return
+    repo, declared_write = _target(payload)
     if not repo:
-        return                       # not a git checkout — nothing to protect, nothing to lock
+        return                       # not a git checkout — nothing to witness, nobody to inform
 
     _record()
     session = payload.get("session_id") or "unknown"
-    intent = _intent(payload)
 
-    # --- SPEC-v2: has this agent declared a scope? -----------------------------------------------
-    # If it has, it works under the reservation it negotiated. If it has not, everything below is
-    # v1, unchanged — which is the property that makes the trial safe: silence is exactly as safe
-    # as it was yesterday.
-    if scope.declared(session):
-        if tool.startswith("mcp__"):
-            if _watched_mcp(tool):
-                common.observe_scoped(repo, session)     # witnessed, never gated (§7c stands)
-            return
-        # A live v1 lock is a claim on the whole checkout, and it binds scoped agents too — the
-        # session that took it was promised everything. Without this check a reservation would be
-        # a priesthood the mutex stops applying to, and mixed fleets would interleave silently.
-        if denial := common.v1_lock_blocks(repo, session, intent):
-            _deny(denial)
-        if known_write:
-            denial, notes = common.scope_gate(repo, session, _target_path(payload), intent)
-            if denial:
-                _deny(denial)
-            for note in notes:
-                _say(note)
-            return
-        common.observe_scoped(repo, session)             # a shell: witnessed too (§7, §7a)
-        return
-
-    # MCP FIRST, before the undeclared-session refusal below, and the order is load-bearing —
-    # §7c does not have a scope-shaped exception. The first trial build had these two blocks the
-    # other way round, so the moment any agent held a scope, an undeclared session in that repo was
-    # denied its MCP calls — INCLUDING declare_scope, the exact tool the refusal names as the way
-    # in. No lock, no refusal, ever, means here too.
-    if tool.startswith("mcp__"):
-        common.observe(repo, session)
-        return
-
-    # An undeclared agent is working under the v1 mutex, so it overlaps anyone holding a region.
-    # The refusal TEACHES the protocol — the way out is not to wait, it is to say what you are
-    # going to touch.
-    if denial := common.scope_blocks_an_undeclared_session(repo, session):
-        _deny(denial)
-
-    if known_write:
-        denial, notes = common.gate(repo, session, intent)
-        if denial:
-            _deny(denial)
-        for note in notes:
-            _say(note)
-        return
-
-    tool_input = payload.get("tool_input") or {}
-
-    # The one command a refused session is allowed to run here: the background waiter this gate
-    # itself minted. Byte-for-byte equality against a string we wrote — recognising our own token,
-    # not reading someone else's command. Without it, a blocked session cannot even wait, because
-    # waiting is a shell and the shell is what it was refused.
-    if common.is_ticket(session, repo, tool_input.get("command") or ""):
-        return
-
-    # Unknown effect: take the lock on speculation rather than form an opinion about the command.
-    # PostToolUse hands it straight back if the repo did not move — unless the task was BACKGROUNDED,
-    # in which case there is nothing to observe yet and the lock is held instead of guessed at.
-    denial, notes = common.hold_unknown(
-        repo, session, intent, background=bool(tool_input.get("run_in_background")))
-    if denial:
-        _deny(denial)
-    for note in notes:
-        _say(note)
+    notes = []
+    if note := common.shared_note(repo, session):
+        notes.append(note)
+    if declared_write:
+        notes += common.heads_up(repo, session, _target_path(payload), _intent(payload))
+    else:
+        notes += common.watch(repo, session)     # the witness's before-picture; never a refusal
+    for n in notes:
+        _say(n)
 
 
 def post_tool_use(payload: dict) -> None:
-    """Where the speculation is settled: the lock is kept if the repo moved, released if it did not.
-
-    This is the half that makes the pessimistic hold affordable. Without it, every `cat` would keep
-    a ten-minute lease and we would be back in #4 within the hour.
-    """
     tool = payload.get("tool_name") or ""
-    if tool.startswith("mcp__") and not _watched_mcp(tool):
-        return                       # our own lock tools — nothing was observed, nothing to settle
-
-    repo, known_write = _target(payload)
-    if not repo:
+    if _skipped_mcp(tool):
         return
+    repo, declared_write = _target(payload)
+    if not repo or declared_write:
+        return                       # a declared write was handled before it ran; nothing to settle
 
     _record()
     session = payload.get("session_id") or "unknown"
-
-    # SPEC-v2: the witness. A scoped agent's shell and MCP calls were not gated, so this is where we
-    # find out what they did — and, if it landed in someone else's region, say so to both of them.
-    if scope.declared(session):
-        if not known_write:
-            for note in common.witness_scoped(repo, session):
-                _say(note)
-        return
-
-    if known_write:
-        return                       # a declared write took the lock before it ran, and keeps it
-
-    # The MCP half of the same question, asked without a lock having been staked on the answer:
-    # did the tree move? If it did, that tool wrote, and the session becomes the holder here rather
-    # than at the gate — because there was no gate.
-    if tool.startswith("mcp__"):
-        for note in common.settle_observed(repo, session, _intent(payload)):
-            _say(note)
-        return
-
-    for note in common.settle_unknown(repo, session):
+    for note in common.settle(repo, session, _intent(payload)):
         _say(note)
 
 
 def stop(payload: dict) -> None:
-    """The handback, and the one event that is allowed to say NO to the model itself.
-
-    Exit 2 here does not block a tool — it blocks the *stop*, and hands the reason back so the
-    session keeps working. That is what lets us refuse the dirty handback outright (see
-    common.hand_back) instead of holding a lock on the mess it leaves behind.
-
-    `stop_hook_active` is the harness telling us we already blocked this stop once. We ask exactly
-    once and then get out of the way: Claude Code overrides a Stop hook that blocks eight times
-    running, and a session that cannot hand back to its human is a worse failure than any lock.
-    """
+    """The one exit 2 in the library. It blocks the STOP — not a tool, not another agent — to ask
+    the departing session, exactly once (`stop_hook_active`), not to leave a dirty tree behind."""
     repo = common.repo_root(payload.get("cwd") or os.getcwd())
     if not repo:
         return
     _record()
     session = payload.get("session_id") or "unknown"
-
-    # SPEC-v2: a scoped agent gives its region back against a clean tree, for v1 §5's reason exactly
-    # — a region parked on half-finished work blocks everyone and protects nobody.
-    common.scope_hand_back(repo, session)
-
     block, notes = common.hand_back(
         repo, session, already_asked=bool(payload.get("stop_hook_active")))
     if block:
         _deny(block)
     for note in notes:
         _say(note)
+
 
 def session_start(payload: dict) -> None:
     repo = common.repo_root(payload.get("cwd") or os.getcwd())
@@ -326,19 +186,10 @@ HANDLERS = {
 
 
 # --- wiring this adapter into (and out of) the harness ------------------------------------------
-#
-# The hook block was, until now, a stanza in the README that a human pasted into settings.json by
-# hand. That is how you get the DEGRADED case common.py has to detect at runtime: a PostToolUse that
-# never made it across, and a lock that is then never handed back. An install that can be got wrong
-# by hand should be done by a program.
 
-# Matchers per event. The shells BOTH have to be in the PreToolUse/PostToolUse matchers — on Windows
-# PowerShell is the one that actually gets used, and a missing PostToolUse is bug #4 wearing a hat.
-#
-# `mcp__.*` is in both, and it is NOT there to gate anything: the hook watches those calls and
-# refuses none of them (SPEC.md §7c). Both events are required for the same reason as the shells,
-# though — the "after" picture is meaningless without the "before" one — and a matcher that caught
-# the MCP write and then had nowhere to report it would be worse than not looking.
+# Matchers per event. Both shells (on Windows PowerShell is the one that runs) and `mcp__.*`, all
+# for the WITNESS — nothing matched here is ever refused. PostToolUse missing = a blind witness,
+# which watch() detects and says out loud rather than letting anyone believe they are covered.
 EVENTS = {
     "PreToolUse": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|mcp__.*",
     "PostToolUse": "Bash|PowerShell|mcp__.*",
@@ -348,34 +199,24 @@ EVENTS = {
 
 
 def settings_path() -> str:
-    """User scope, not project scope: the lock guards every checkout on the machine, and at user
-    scope $CLAUDE_PROJECT_DIR points at whatever project the session happens to be in."""
+    """User scope, not project scope: the courier covers every checkout on the machine."""
     return os.getenv("REPOLOCK_CLAUDE_SETTINGS") or os.path.join(
         os.path.expanduser("~"), ".claude", "settings.json")
 
 
 def hook_command() -> str:
-    """The command the harness will run — quoted, and spelled with forward slashes.
-
-    The same lesson as the waiter's ticket (#10), and it is not a coincidence: this string is also
-    handed to a shell. Quoted, so a space in the path survives; forward slashes, so there is no
-    backslash for a POSIX shell to eat. Windows accepts them everywhere.
-    """
+    """Quoted, and spelled with forward slashes: this string is handed to a shell (#10)."""
     py = sys.executable.replace("\\", "/")
     script = os.path.abspath(__file__).replace("\\", "/")
     return f'"{py}" "{script}"'
 
 
 # The adapter script's own directory, which is what makes a hook entry OURS. Specific on purpose:
-# the first version of this tested for the bare substring `repolock`, and a foreign hook whose
-# command merely CONTAINED the word (`echo not-repolock`) was identified as ours and deleted by
-# uninstall. A substring is not an identity. This fragment names the file we actually install, and
-# is stable across checkouts (any path ending .../repolock/hooks/claude_code.py).
+# a bare-substring test once identified `echo not-repolock` as ours and deleted it on uninstall.
 MARKER = "repolock/hooks/"
 
 
 def _ours(entry: dict) -> bool:
-    """Is this hook entry one of ours? Uninstalling repolock must not uninstall anything else."""
     return any(MARKER in (h.get("command") or "").replace("\\", "/").lower()
                for h in (entry.get("hooks") or []))
 
@@ -386,7 +227,7 @@ def hook_block() -> dict:
     for event, matcher in EVENTS.items():
         hook = {"type": "command", "timeout": 20, "command": cmd}
         if event == "PreToolUse":
-            hook["statusMessage"] = "checking the repo lock"
+            hook["statusMessage"] = "checking the shared-checkout map"
         entry: dict = {"hooks": [hook]}
         if matcher:
             entry["matcher"] = matcher
@@ -412,7 +253,7 @@ def _save_settings(path: str, data: dict) -> None:
 
 
 def wired(path: str | None = None) -> bool:
-    """Are ALL four of our events wired? Three out of four is the degraded install, not an install."""
+    """Are ALL four of our events wired? Three out of four is a blind witness, not an install."""
     hooks = _load_settings(path or settings_path()).get("hooks") or {}
     return all(any(_ours(e) for e in (hooks.get(ev) or [])) for ev in EVENTS)
 
@@ -449,24 +290,19 @@ def uninstall(path: str | None = None) -> bool:
 
 
 def _utf8() -> None:
-    """Say what we mean, in the encoding the harness actually reads.
-
-    Python on Windows writes stderr in the ANSI code page, and the harness decodes it as UTF-8. So
-    every em-dash in a refusal — and this module's refusals are made of them — arrived at the model
-    as U+FFFD (seen on the #10 tape: `REPO LOCKED � another agent session...`). The text a gate
-    uses to explain itself is the only thing it has; delivering it as mojibake is not cosmetic.
-    """
+    """Python on Windows writes stderr in the ANSI code page and the harness decodes UTF-8; an
+    em-dash arriving as U+FFFD is a message half-delivered (#10's tape)."""
     for stream in (sys.stdout, sys.stderr):
         try:
             stream.reconfigure(encoding="utf-8")
         except (AttributeError, OSError):
-            pass                          # not a real console stream; nothing to fix
+            pass
 
 
 def main() -> None:
     _utf8()
     if env.disabled():
-        sys.exit(0)                       # the panic switch — see env.disabled()
+        sys.exit(0)                       # the off switch — see env.disabled()
 
     try:
         payload = json.load(sys.stdin)
@@ -482,9 +318,10 @@ def main() -> None:
     except SystemExit:
         raise
     except Exception as e:                # noqa: BLE001
-        # A crashing hook must never wedge the session. Fail OPEN, loudly: an unguarded write is
-        # bad, but a laptop where nobody can edit anything is worse — and silent is worst.
-        print(f"repo-lock hook error ({type(e).__name__}: {e}) — proceeding unguarded",
+        # A crashing hook must never wedge a session. Fail SILENT-to-the-flow, loud-to-the-eye:
+        # the courier losing a note is an inconvenience; a hook error blocking work would be the
+        # lock's old disease wearing the informer's coat.
+        print(f"repo-scope hook error ({type(e).__name__}: {e}) — this call went unwitnessed",
               file=sys.stderr)
         sys.exit(0)
 

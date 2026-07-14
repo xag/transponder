@@ -1,6 +1,6 @@
-"""Negotiated scopes — SPEC-v2. Pure logic over `env`; every effect is on the boundary and on tape.
+"""Negotiated scopes — SPEC. Pure logic over `env`; every effect is on the boundary and on tape.
 
-**This is a TRIAL (SPEC-v2 §11).** The claim it tests is not about code, it is about behaviour:
+**This is a TRIAL (SPEC §8).** The claim it tests is not about code, it is about behaviour:
 *agents will contain their work once containment is visible and rewarded.* It cannot be settled by
 argument, and it cannot be settled from v1's tapes either — those record agents who were never
 offered the deal, and reasoning from them is the Lucas critique. So it is run, with the recorder on,
@@ -21,15 +21,11 @@ guessed. There are no other namespaces, and that is the point:
   - what does not fit a filesystem (a port, a service) is not reservable, deliberately. A name
     without a witness is a contract nobody can check; it can earn its way in later.
 
-The one property that makes the trial safe to run: **silence costs everything.** A session that
-never declares works under v1's whole-checkout mutex, exactly as yesterday — and a live v1 lock
-reads to scoped agents as a claim on `<checkout>/**`, so the two regimes exclude each other instead
-of silently interleaving. v1 is the degenerate case of v2, in both directions.
-
-The turn v2 makes, in a sentence: v1 prevents a collision AT THE WRITE, which is why MCP is a hole
-(the call declares nothing, and the channel carries the off switch, so it cannot be gated — §7c). v2
-prevents it AT THE RESERVATION: a write inside my scope cannot collide with anyone, because nobody
-else is permitted there. The ungated channel stays ungated and the hole still closes.
+**Nothing here refuses anything.** A conflicting `declare` is not recorded — the registry will
+not double-book a region — but no tool call is ever blocked on account of it: the agent is told who
+holds what, down to the exact intersection, and decides for itself. The registry is a shared map,
+the leases are how stale information decays, and the witness (witness.py) is how the map is checked
+against what actually happened. That is the whole enforcement model.
 """
 
 from __future__ import annotations
@@ -37,12 +33,12 @@ from __future__ import annotations
 import json
 import os
 
-from repolock import env, lock
+from repolock import env
 
 LEASE_SECONDS = 900
 
 
-# --- resources: canonical paths, and nothing else (SPEC-v2 §1) -----------------------------------
+# --- resources: canonical paths, and nothing else (SPEC §1) -----------------------------------
 
 def canon(path: str) -> str:
     """One true spelling: absolute, symlinks resolved, case-normalised, forward slashes."""
@@ -119,7 +115,7 @@ def conflicts(mine: list[str], theirs: list[str]) -> list[tuple[str, str, str]]:
 
 
 def covers(scope: list[str], path: str) -> bool:
-    """Is this canonical path inside this scope? Used to gate a DECLARED write (§6)."""
+    """Is this canonical path inside this scope? What the witness and the heads-up check ask."""
     return any(overlaps(r, path) for r in scope)
 
 
@@ -151,8 +147,8 @@ def live() -> list[dict]:
 
 
 def touching(root: str) -> list[dict]:
-    """The live claims that reach into one checkout — what `scopes(repo)` shows, and what holds an
-    undeclared session out of a shared repo."""
+    """The live claims that reach into one checkout — what `scopes(repo)` shows, and what the
+    courier tells a session that walks into a shared repo."""
     tree = canon(root) + "/**"
     return [c for c in live() if any(overlaps(tree, r) for r in c["scope"])]
 
@@ -171,23 +167,6 @@ def declared(session: str) -> bool:
 def scope_of(session: str) -> list[str]:
     claim = mine(session)
     return claim["scope"] if claim else []
-
-
-def _v1_holder(anchor: str, session: str) -> dict | None:
-    """A live v1 lock on the anchor checkout, held by someone else, read AS A CLAIM on
-    `<checkout>/**`. This is 'v1 is the degenerate case of v2' made literal, in the direction the
-    first trial build forgot: the session that took the whole-checkout lock was PROMISED the whole
-    checkout, and a scope declared over its head is the founding incident with a reservation as the
-    weapon."""
-    v = lock.status(anchor)
-    if v["status"] != "locked" or v.get("takeable"):
-        return None
-    lk = v.get("lock") or {}
-    if lk.get("session") == session:
-        return None
-    return {"session": lk.get("session"), "scope": [canon(anchor) + "/**"],
-            "intent": (lk.get("intent") or "") + " [v1 whole-checkout lock]",
-            "acquired_at": lk.get("acquired_at", env.now())}
 
 
 def _write(session: str, scope: list[str], intent: str, now: float,
@@ -221,9 +200,6 @@ def declare(anchor: str, session: str, resources: list[str], intent: str = "") -
         scope.append(c)
 
     others = [c for c in _live(now) if c["session"] != session]
-    if v1 := _v1_holder(anchor, session):
-        others.append(v1)
-
     clash = [(c, conflicts(scope, c["scope"])) for c in others]
     clash = [(c, hits) for c, hits in clash if hits]
     if clash:
@@ -318,7 +294,7 @@ def _free_hint(anchor: str, others: list[dict]) -> list[str]:
     return free[:12]
 
 
-# --- the witness (SPEC-v2 §7) -------------------------------------------------------------------
+# --- the witness (SPEC §4) -------------------------------------------------------------------
 
 def violations(session: str, written: list[str]) -> list[dict]:
     """Canonical paths this agent wrote OUTSIDE its own scope, and whose region another agent had

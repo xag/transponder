@@ -1,266 +1,137 @@
 # repolock
 
-One developer, several AI agent sessions, one checkout.
+One developer, several AI agent sessions, one machine of shared checkouts.
 
-> ### ⚠️ Experimental, and it has already bitten
->
-> This is a young protocol with a young implementation, and it sits on the write path of every
-> session on your machine. That is an unforgiving place for a bug.
->
-> It has broken a working fleet twice, both times through the same door. v0.1 decided whether a
-> shell command was a write **by reading it** — word lists of mutating commands, a redirect regex.
-> That gate locked *readers* out of their own repos ([#4](https://github.com/xag/repolock/issues/4)),
-> and then, after being fixed, did it again: a `>` inside a string
-> ([#7](https://github.com/xag/repolock/issues/7)) made `print("a -> b")` a redirect into a file,
-> so a session that was only reading took the lock — and could be refused one — on a repo it wasn't
-> even touching.
->
-> **v1 deletes the classifier.** It cannot be made correct: `npm install` and `./deploy.sh` write and
-> name nothing a list can hold, while `git log --format='%h -> %s'` is a read under a POSIX shell and
-> a *write* under `cmd.exe`. Instead repolock now **looks at the repo** — a fingerprint before a tool
-> runs and after — and a write is a fingerprint that moved. That is an observation, not a prediction,
-> and it is right about `make`, `./deploy.sh` and every other command nobody listed.
->
-> A shell still takes the lock *before* it runs — not because anyone thinks it writes, but because
-> acquiring is how you find out safely. If the fingerprint proves it only read, the lock is handed
-> straight back in the same breath. The price is stated rather than hidden: two sessions cannot run
-> shell commands against one checkout at the same instant. That is not a defect in a mutex, it is a
-> mutex — and `Read`/`Grep`/`Glob` are never gated, so a refused session can always still inspect
-> the repo and see why. See SPEC §7b.
->
-> A refused session is no longer left at a locked door with no sign on it. It is told what the
-> holder is doing, what it has touched, and what is still open — and it can **subscribe**: the gate
-> hands it a background waiter that dies when the lock frees, so its harness wakes it and it can go
-> and do other work in the meantime ([#5](https://github.com/xag/repolock/issues/5)). Waiting used
-> to be impossible: `sleep` is a shell command, and the shell is exactly what was refused
-> ([#4](https://github.com/xag/repolock/issues/4)).
->
-> **MCP tools are watched, and never gated** ([#3](https://github.com/xag/repolock/issues/3)). A
-> write through one — a notebook cell, a filesystem server — used to be invisible. It is now seen:
-> the same fingerprint, before and after, and the session that moved the tree takes the lock. But it
-> is never *refused*, and that is deliberate and permanent. Every escape hatch this thing has is an
-> MCP call — the off switch below, `lock_wait`, and the refusal's own "file an issue and move on" —
-> so a gate there would stand in front of every way out of a lock that is misbehaving. The tool that
-> turns the lock off cannot be reachable only when the lock is off. The price is stated rather than
-> hidden: on that one path there is no mutex, only detection one call late, and a write into a repo
-> someone else holds is reported as a collision rather than prevented. See SPEC §7c.
->
-> **The off switch, when it gets in your way.** When this thing misfires it takes away your *shell*
-> — that is what a refusal is — so the off switch is deliberately not a shell command:
->
-> - **from an agent session** (including one that is currently wedged): call the MCP tool
->   **`lock_disable(reason)`**. The hook never gates an MCP call, so it always gets through.
->   `lock_enable()` puts it back; `lock_switch()` says whether it is on, wired, and what it holds.
-> - **from a terminal**: `python -m repolock.toggle off` (`on`, `status`).
->
-> Either way it writes `~/.repolock/DISABLED`, which every hook checks on every call — so sessions
-> **already running** are freed on their next tool use. That matters because a harness snapshots its
-> hooks at startup: editing `settings.json` cannot reach the sessions that are actually stuck.
-> Nothing is left behind in your repos; the lock records live outside them.
+**This is no longer a lock, despite the name** (a rename is coming). It is an **information
+layer**: agents declare where they will write, a witness reports what actually happened, and a
+courier carries both into every agent's context. **Nothing is ever refused.**
 
-Git assumes the working tree has one author. Run two agent sessions against the same clone and
-that assumption silently fails: sessions overwrite each other's edits, and — subtler — a session
-goes on *reasoning* about commits that a concurrent rebase has already destroyed. Nothing is
-corrupted, so nothing complains.
-
-repolock is **a protocol plus a reference implementation, not a service**:
-
-- **[SPEC.md](SPEC.md)** — a lockfile convention (think `.git/index.lock`, or EditorConfig):
-  where the lockfile lives, its JSON schema, and its semantics — short leases renewed by
-  activity, commit-anchored handoff, release refused on a dirty tree, idle-clean releases,
-  idle-dirty lapses, and the read-side drift check.
-- **`repolock/`** — the reference library. Pure stdlib, zero dependencies:
-  `acquire` / `renew` / `release` / `go_idle` / `status` / `drift`.
-- **`repolock/hooks/`** — the adapters that make the lock *binding*: `claude_code.py`
-  (PreToolUse/PostToolUse/Stop/SessionStart) and `cursor.py` (preToolUse/beforeShellExecution/stop).
-  Enforcement cannot be an MCP tool — a tool is something the model chooses to call, and the
-  offending session never chooses to. A lock taken through one vendor's hook holds out a
-  session arriving through the other's; the test suite executes exactly that.
-- **`repolock/server.py`** *(extra `mcp`)* — a read-mostly stdio MCP server for visibility, the
-  deliberate human override, and the off switch: `lock_status`, `lock_wait`, `lock_drift`,
-  `lock_debug`, `force_unlock`, and `lock_disable` / `lock_enable` / `lock_switch`. MCP is where
-  these belong precisely because the hook never *gates* an MCP call — so they still work from inside
-  a session the lock has refused, which is the only moment anyone reaches for them. (The hook does
-  *watch* MCP calls, to catch one that writes the tree; it just never refuses one. SPEC §7c.)
-
-The point is cross-tool: every agent on the machine — Claude Code, Cursor, Codex CLI, whatever
-comes next — honoring the same lockfile. A mixed fleet is exactly the scenario the lock guards.
+> ### How a lock became a channel
+>
+> v1 was a mutex on the write path of every agent session on the machine, and it took that machine
+> down four times. Twice by misreading commands (#4 refused *readers*; #7 read `print("a -> b")` as
+> a redirect); once by minting an escape hatch that could not run (#10 — the waiter's own ticket
+> died in bash, and dying looked identical to succeeding); once by parking a lock on an artifact
+> directory and refusing `ls` for ten minutes (#11). Each time the cure was more machinery: tickets,
+> degraded modes, idle boundaries, an off switch.
+>
+> Then the tapes were read. In the entire recorded history of the lock, it had faced exactly **two**
+> real contentions — and both were sessions working **different directories**, refused for no
+> reason. Meanwhile every incident it caused had the same root: not malice, not even carelessness —
+> **an agent that did not know another agent was there.** You do not build a mutex against
+> ignorance. You inform it.
+>
+> So the mutex is deleted. What remains never says no:
+>
+> - **the map** — agents declare scopes (canonical filesystem paths; `.git/index` is just a file,
+>   and reserving it around a commit is what keeps `git add -A` from sweeping a neighbour's
+>   half-finished work into your commit). The map never double-books; a conflicting declaration
+>   is answered with who, why, the exact overlap to subtract, and what is free — and nothing about
+>   your *work* is blocked either way.
+> - **the courier** — hooks that print into an agent's context: "this checkout is shared, agent X
+>   is working `api/**`", once; "the file you are about to edit is inside X's region", before the
+>   write; "history moved under you", at session start.
+> - **the witness** — a fingerprint before and after every shell and MCP call. A write that lands
+>   in another agent's region is named, loudly, to the agent that did it, with the recovery
+>   attached. A fact off the tree, never a guess about a command — the one v1 lesson that survives
+>   everything: what a command will write is not decidable from its text, so nothing here reads
+>   commands.
+>
+> One deliberate exception: at the **Stop boundary**, a session leaving a dirty tree it was working
+> is asked — once, never twice — to commit, ignore, or stash. That blocks no other agent, ever.
 
 ## Install (Claude Code)
 
 ```bash
 git clone https://github.com/xag/repolock && cd repolock
 uv sync            # or: pip install .
+python -m repolock.toggle on        # wires the hooks at user scope; idempotent
 ```
 
-Then wire the hooks at **user scope** (`~/.claude/settings.json`), so every repo on the machine is
-guarded:
+Four events, all information: `PreToolUse` (the courier + the witness's before-picture; matcher
+includes both shells and `mcp__.*`), `PostToolUse` (the witness settles), `Stop` (release claims on
+a clean tree; the ask-once on a dirty one), `SessionStart` (the drift check). A missing
+`PostToolUse` is a **blind witness** — the hook detects it and says so, once, rather than letting
+anyone believe they are covered.
 
-```bash
-python -m repolock.toggle on        # writes the hooks block; idempotent; leaves your other hooks alone
-python -m repolock.toggle status    # is it on? is it wired? what is it holding?
-python -m repolock.toggle off       # ...and off again, instantly, everywhere
-```
+**Register the MCP server too:** `uv run python -m repolock.server`. It is the channel — the tools
+the notes point at:
 
-This used to be a JSON stanza you pasted in by hand, and that is precisely how you got the failure
-mode the library then had to detect at runtime: a `PostToolUse` that never made it across, and a lock
-that was therefore never handed back. **An install that can be got wrong by hand should be done by a
-program.** Four events are wired, and each one is load-bearing:
-
-| event | matcher | why |
-|---|---|---|
-| `PreToolUse`   | `Edit\|Write\|MultiEdit\|NotebookEdit\|Bash\|PowerShell\|mcp__.*` | acquire before a declared write; hold on speculation before a shell; *watch* an MCP call |
-| `PostToolUse`  | `Bash\|PowerShell\|mcp__.*` | where a shell or MCP write is *discovered* — the first moment anyone honestly can |
-| `Stop`         | — | the handback: commit/ignore/stash, then the lock frees itself |
-| `SessionStart` | — | the read-side drift check |
-
-`mcp__.*` is in both matchers, and it is **not** there to gate anything. Those calls are fingerprinted
-and never refused (SPEC §7c) — which is a distinction the code has to make deliberately, because the
-hook's own fallthrough treats an unrecognised tool as a shell. Widen the matcher without the rest of
-the change and `lock_disable` gets *blocked by the lock it exists to switch off*.
-
-`PostToolUse` is not optional. Without it, `PreToolUse` still guards the file-editing tools — which
-declare what they will write — but every shell runs unobserved, *and* the speculative lock a shell
-takes is never given back, so every `cat` holds the repo for a full lease. That is
-[#4](https://github.com/xag/repolock/issues/4), reintroduced by a config typo.
-
-Both shells belong in the matcher. The matcher is a list of *names*, and a name that is missing is
-a tool the hook never sees: on Windows `PowerShell` is the shell that actually runs, so a matcher
-without it leaves every write on that platform unguarded, silently and for as long as nobody looks.
-
-**Register the MCP server too — it is not optional.** `uv run python -m repolock.server`.
-
-It carries `lock_wait`, and that is how a blocked session waits. It cannot wait by itself: waiting
-means running `sleep`, `sleep` is a shell command, and the shell is exactly what the lock just
-refused it. The hook never gates an MCP call, so that is the one channel that still works from
-inside a refusal — it is also the only reason [#4](https://github.com/xag/repolock/issues/4) could
-be reported at all, by a session that could not run a shell. Install the hooks without the server
-and a refused session has nothing to do but spin.
-
-## Install (Cursor)
-
-Same lockfile, Cursor's wire format — `~/.cursor/hooks.json`:
-
-```json
-{
-  "version": 1,
-  "hooks": {
-    "preToolUse":           [{"command": "<python> <checkout>/repolock/hooks/cursor.py"}],
-    "beforeShellExecution": [{"command": "<python> <checkout>/repolock/hooks/cursor.py"}],
-    "stop":                 [{"command": "<python> <checkout>/repolock/hooks/cursor.py"}],
-    "sessionEnd":           [{"command": "<python> <checkout>/repolock/hooks/cursor.py"}],
-    "sessionStart":         [{"command": "<python> <checkout>/repolock/hooks/cursor.py"}],
-    "beforeSubmitPrompt":   [{"command": "<python> <checkout>/repolock/hooks/cursor.py"}]
-  }
-}
-```
-
-Run both harnesses against the same clone and each one's sessions are held out of the other's
-mid-change tree — which is the point.
+| tool | what it does |
+|---|---|
+| `scopes(repo)` | who is working this checkout and where — call it BEFORE you plan |
+| `declare_scope(repo, scope, session_id, intent)` | put your region on the map |
+| `extend_scope(repo, add, session_id)` | widen when you discover you need more |
+| `release_scope(repo, session_id, drop?)` | take yourself off the map the moment a region stops being yours |
+| `lock_drift(repo, seen_head)` | has history moved under you? |
+| `lock_disable` / `lock_enable` / `lock_switch` | the off switch (below) |
 
 ## What it feels like
 
-A session that tries to write into a checkout another live session is mid-change on gets the tool
-call blocked — and, more to the point, gets told enough to *do something about it*:
+An agent walking into a checkout someone else is working:
 
 ```
-REPO LOCKED — another agent session is part-way through changing this working copy.
-  refused : Edit rhythm.py
-  holder  : session 8663de9b
-  doing   : Bash: uv run pytest -q tests/test_today.py
-  since   : 41s ago, still moving
-  frees in: ~598s — but activity renews the lease, so it may be longer
-  touched : 2 uncommitted change(s) in the tree —
-             M rhythm.py
-             M server.py
+THIS CHECKOUT IS SHARED — you are not alone in c:/users/x/projects/app:
+
+  agent e85314e1 is working c:/users/x/projects/app/api/**  — the rate limiter
+
+Nothing is blocked. But their regions are their half-finished work: stay out of them, and
+SAY WHERE YOU WILL WRITE so they can stay out of yours:
+    declare_scope(repo, ['src/thing/**', 'tests/thing/**'], intent='what you are doing')
 ```
 
-Then: what is still open (`Read`/`Grep`/`Glob` are never gated, every MCP tool is still yours, and
-every other repo is free), and two ways to wait — because **a blocked session cannot wait by
-itself**. `sleep` is a shell command, and the shell is exactly what was refused.
+An agent about to edit a file in someone's region gets a **HEADS UP** naming the holder and their
+intent — before the write, and without blocking it. An agent whose shell *did* write into someone's
+region gets the loudest thing this library says:
 
-- **Subscribe**, and get on with something else. The refusal hands over a one-time command; run it
-  in the background and your harness wakes you the moment the lock frees. That command is minted by
-  the gate and allowed by byte-equality against the string it wrote itself — a capability, not a
-  guess. Change one character and it is blocked like any other command.
-- **Block**, if you have nothing else to do: the `lock_wait` MCP tool returns the instant it frees.
+```
+SCOPE VIOLATION — you just wrote inside another agent's reserved region.
+  web/page.js
+     belongs to agent e85314e1 (c:/users/x/projects/app/web/**) — the page
 
-A session that stops to ask its human something releases on a clean tree, or holds until its lease
-lapses on a dirty one — and the next writer inherits a **handoff**: what landed while the previous
-holder was away, what it left uncommitted, and whether history was rewritten under everyone's feet.
+  ...
+  3. YOU COMMITTED THEIR WORK. This is the one violation that is cleanly recoverable:
+         git reset --soft HEAD~1     # un-commit, keep the tree
+         git restore --staged <their paths>
+     Stage YOUR paths by name, never `-A`.
+```
 
-A gate that stops you without saying what it is waiting for, or offering a way to wait, leaves an
-agent doing what a person does at a locked door with no sign on it: rattling the handle. That is
-what v0.1 did, and it is the other half of why this release exists.
+Two agents with disjoint scopes work the same checkout **concurrently, in silence** — which is the
+entire point, and the thing the old lock refused both times it ever mattered.
 
 ## Recording (on by default)
 
-A lock bug is a heisenbug — a clock, a PID, and an interleaving you cannot re-stage. With the
-`flight` extra, every lock operation is recorded at its nondeterminism boundary and replayed
-deterministically, and `repolock/invariants.py` holds the claims (two live sessions never hold
-the same copy; a dirty tree is never handed over; …) that condemn a bad trajectory on any tape.
+Every claim, conflict and witnessed write lands on a flight-recorder tape (`~/.repolock/flight`,
+extra `flight`). The tape is the evidence for the design's own bet — *agents contain their work
+once containment is visible* — and the spec's §8 lists exactly what observation kills it. An
+invariant suite judges every recorded call; the crucial one condemns a **double-booked map**, and
+its negative control plants a broken overlap function and requires the oracle to catch it.
+`REPOLOCK_FLIGHT=0` turns recording off.
 
-**Recording is on by default, and that default was bought the hard way.** It used to be opt-in
-behind `REPOLOCK_FLIGHT`, to spare the hook's hot path a heavyweight import. Then the write gate
-starved a two-session fleet ([#4](https://github.com/xag/repolock/issues/4)) and there was no
-tape: the incident had to be reconstructed from the harness's own transcripts, which happened to
-exist and were never designed to answer the question. An opt-in recorder is off exactly when you
-need it, because nobody knows in advance which hour is the interesting one.
+## The off switch
 
-Recordings land in `~/.repolock/flight` — absolute, and outside every repo, for the same reason
-the lockfile is: the hook runs with cwd set to the session's checkout, so a relative default
-would drop a recording directory into every repo on the machine. Set `REPOLOCK_FLIGHT=0` to turn
-recording off and buy back the zero-import path.
+`lock_disable("why")` from any agent session, or `python -m repolock.toggle off` from a terminal.
+Either writes `~/.repolock/DISABLED`, which every hook checks on **every call** — so sessions
+already running go quiet on their next tool use, no restart needed. An information layer cannot
+wedge the machine the way the lock could, but it can be wrong, noisy, or slow, and off must mean
+off. `lock_enable` re-wires the hooks as well as disarming, because *on* has to mean on.
+
+`REPOLOCK_DISABLED` (env) overrides the file in both directions and is reported by `lock_switch`
+precisely because it wins.
 
 ## Honest niche
 
-Claude Code ships worktree isolation for background sessions — the vendor's answer to the same
-problem, by not sharing the checkout at all. Where worktrees fit, use them. repolock's durable
-niche is what they don't reach:
-
-- **interactive sessions deliberately pointed at the same checkout** (one clone, one venv, one
-  dev server);
-- **cross-tool fleets** — no vendor's isolation covers another vendor's agent;
-- **the stale-reader drift check** — a worktree doesn't stop another session rewriting the
-  branch you're reasoning about.
-
-Success looks like planned obsolescence: harnesses absorb the convention, and this repo remains
-as the reference.
+Claude Code ships worktree isolation for background sessions — the vendor's answer, by not sharing
+the checkout at all. Where worktrees fit, use them. This convention covers what they don't reach:
+interactive sessions deliberately pointed at one checkout, mixed-vendor fleets, and the
+stale-reader drift check. Success still looks like planned obsolescence: harnesses absorb the
+convention, and this repo remains the reference.
 
 ## Environment
 
-| variable              | meaning                                              |
-|-----------------------|------------------------------------------------------|
-| `REPOLOCK_DIR`        | lockfile directory (default `~/.repolock/locks`)      |
+| variable              | meaning                                               |
+|-----------------------|-------------------------------------------------------|
+| `REPOLOCK_DIR`        | state directory anchor (default `~/.repolock/locks`)  |
 | `REPOLOCK_FLIGHT`     | recording; **on** unless set to `0`/`false`/`off`     |
 | `REPOLOCK_FLIGHT_DIR` | where recordings land (default `~/.repolock/flight`)  |
-| `REPOLOCK_DISABLED`   | the panic switch; also `~/.repolock/DISABLED` (below) |
-
-**The panic switch.** `lock_disable("why")` from any agent session, or `python -m repolock.toggle
-off` from a terminal. Either writes `~/.repolock/DISABLED`, and every hook becomes a no-op
-immediately.
-
-Two properties, and both of them are forced by *when* this gets used — which is always the worst
-possible moment:
-
-**It is a file, checked on every hook call**, not an install-time setting. A harness snapshots its
-hooks when a session *starts*, so editing `settings.json` cannot reach the sessions already running
-— which are precisely the ones you need to free. We learned that the expensive way: the hooks were
-uninstalled, a live session kept its old snapshot, and it was still being blocked minutes later.
-Uninstalling should never require restarting the work it is holding up.
-
-**It is an MCP tool, not a shell command.** When the lock misfires it refuses your *shell*. An off
-switch you have to type into a terminal is therefore unreachable at exactly the moment you need it —
-which is a funny thing to discover about a panic button. The hook never gates an MCP call, so
-`lock_disable` always gets through; the CLI is a convenience for a human, never the mechanism.
-
-That is a **requirement**, not an accident of which tool names happen to be in the matcher, and
-SPEC §7c now says so normatively — because the hook was one line of config away from breaking it.
-Its fallthrough treats any tool that is not a declared write as a shell, so widening the matcher to
-`mcp__.*` without the rest of the change sent `lock_disable` through the write gate and had it
-**refused by the lock it exists to switch off**. If you are ever tempted to "just gate MCP too":
-that is what happens, and it is what [#3](https://github.com/xag/repolock/issues/3) asked for.
-
-And `lock_enable` re-wires the hooks as well as clearing the switch, because *on* has to mean on: a
-repolock that reports itself enabled while its hooks are missing from `settings.json` guards nothing
-and gets trusted anyway, which is the worst of the three states.
+| `REPOLOCK_DISABLED`   | the off switch; also `~/.repolock/DISABLED` (above)   |
