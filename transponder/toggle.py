@@ -1,4 +1,4 @@
-"""The off switch — and the on switch. `python -m repolock.toggle off | on | status`.
+"""The off switch — and the on switch. `python -m transponder.toggle off | on | status`.
 
 The predecessor of this module switched off a LOCK that had taken the machine down four times
 (#4, #7, #10, #11). The lock is gone — nothing here refuses a tool call any more — but the switch
@@ -6,9 +6,9 @@ stays, because an information layer can still be wrong, noisy, or slow, and off 
 
   It must reach a session that is ALREADY RUNNING. A harness snapshots its hooks when it starts, so
   removing them from settings.json does nothing for sessions already up. Only a file on disk,
-  checked on every hook call, gets through: `~/.repolock/DISABLED` (env.disabled). Instant.
+  checked on every hook call, gets through: `~/.transponder/DISABLED` (env.disabled). Instant.
 
-  The real surface is the MCP tools (`lock_disable` / `lock_enable` in repolock/server.py), so a
+  The real surface is the MCP tools (`lock_disable` / `lock_enable` in transponder/server.py), so a
   running agent can reach it without a terminal. This CLI is the same two functions for a human.
 
 The two dimensions are deliberately separate, and `status` reports both:
@@ -16,7 +16,7 @@ The two dimensions are deliberately separate, and `status` reports both:
   ARMED    the panic file exists → every adapter no-ops. Reaches running sessions. Instant.
   WIRED    the hooks are in settings.json → new sessions will run the adapter at all.
 
-`off` arms; `on` disarms AND re-wires, because a repolock that says it is on while its hooks are
+`off` arms; `on` disarms AND re-wires, because a transponder that says it is on while its hooks are
 missing is the worst of the three states — it guards nothing and tells you it is guarding.
 """
 
@@ -28,8 +28,8 @@ import os
 import sys
 import time
 
-from repolock import env
-from repolock.hooks import claude_code
+from transponder import env
+from transponder.hooks import claude_code
 
 
 def state() -> dict:
@@ -43,7 +43,7 @@ def state() -> dict:
         except (OSError, json.JSONDecodeError):
             note = {}                     # a hand-touched file is still a valid switch
 
-    override = os.getenv("REPOLOCK_DISABLED")
+    override = os.getenv("TRANSPONDER_DISABLED")
     return {
         "armed": os.path.exists(path),    # the panic file: the lock is OFF
         "wired": claude_code.wired(),     # the hooks: new sessions will run it
@@ -83,7 +83,7 @@ def disable(reason: str = "", clear: bool = False, unwire: bool = False) -> dict
     os.makedirs(os.path.dirname(env.disabled_path()), exist_ok=True)
     with open(env.disabled_path(), "w", encoding="utf-8") as f:
         json.dump({"since": time.strftime("%Y-%m-%d %H:%M:%S"), "reason": reason or "no reason given",
-                   "by": f"repolock.toggle (pid {os.getpid()})"}, f, indent=2)
+                   "by": f"transponder.toggle (pid {os.getpid()})"}, f, indent=2)
 
     cleared = []
     if clear:
@@ -98,7 +98,7 @@ def disable(reason: str = "", clear: bool = False, unwire: bool = False) -> dict
 def enable() -> dict:
     """Disarm, and re-wire. Both, because "on" has to mean on.
 
-    Removing the panic file while the hooks are missing from settings.json produces a repolock that
+    Removing the panic file while the hooks are missing from settings.json produces a transponder that
     reports itself enabled and guards precisely nothing — the failure mode that is worse than being
     off, because you would be relying on it.
     """
@@ -109,7 +109,7 @@ def enable() -> dict:
         pass
     claude_code.install()
     return {"armed": False, "wired": claude_code.wired(), "stale_claims": stale,
-            "env_override": os.getenv("REPOLOCK_DISABLED")}
+            "env_override": os.getenv("TRANSPONDER_DISABLED")}
 
 
 def render(s: dict) -> str:
@@ -120,7 +120,7 @@ def render(s: dict) -> str:
     if s["reason"]:
         out.append(f"  why off : {s['reason']}  (since {s['since']})")
     if s["env_override"] is not None:
-        out.append(f"  WARNING : REPOLOCK_DISABLED={s['env_override']!r} is set and OVERRIDES the "
+        out.append(f"  WARNING : TRANSPONDER_DISABLED={s['env_override']!r} is set and OVERRIDES the "
                    f"file, in both directions.\n            A session started with it will ignore "
                    f"the switch above.")
     if s["armed"] and s["wired"]:
@@ -144,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
         except (AttributeError, OSError):
             pass
 
-    ap = argparse.ArgumentParser(prog="repolock.toggle", description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(prog="transponder.toggle", description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     off = sub.add_parser("off", help="switch it off, everywhere, now")

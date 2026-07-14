@@ -13,19 +13,19 @@ import sys
 
 import pytest
 
-from repolock import scope, toggle
-from repolock.hooks import claude_code
+from transponder import scope, toggle
+from transponder.hooks import claude_code
 
-CLAUDE = os.path.join(os.path.dirname(__file__), "..", "repolock", "hooks", "claude_code.py")
+CLAUDE = os.path.join(os.path.dirname(__file__), "..", "transponder", "hooks", "claude_code.py")
 
 
 @pytest.fixture
 def switchable(repo, tmp_path, monkeypatch):
-    """The `repo` fixture pins REPOLOCK_DISABLED=0 so the machine's own panic file cannot mute the
+    """The `repo` fixture pins TRANSPONDER_DISABLED=0 so the machine's own panic file cannot mute the
     suite. Here the panic FILE is the thing under test, so the override has to come off — otherwise
     we would be testing the env var and calling it the file."""
-    monkeypatch.delenv("REPOLOCK_DISABLED", raising=False)
-    monkeypatch.setenv("REPOLOCK_CLAUDE_SETTINGS", str(tmp_path / "settings.json"))
+    monkeypatch.delenv("TRANSPONDER_DISABLED", raising=False)
+    monkeypatch.setenv("TRANSPONDER_CLAUDE_SETTINGS", str(tmp_path / "settings.json"))
     return repo
 
 
@@ -73,15 +73,15 @@ def test_on_means_on_even_when_the_hooks_were_removed(switchable, tmp_path):
     assert set(wired) == set(claude_code.EVENTS), "a partial install is the DEGRADED case, not an install"
 
 
-def test_uninstalling_repolock_does_not_uninstall_anyone_elses_hooks(switchable, tmp_path):
+def test_uninstalling_transponder_does_not_uninstall_anyone_elses_hooks(switchable, tmp_path):
     """We remove our entries. Only ours.
 
-    The foreign command is `echo not-repolock` on purpose, and it is not a joke: the first cut of
-    `_ours()` matched the bare substring `repolock`, so this hook — which merely mentions the word —
+    The foreign command is `echo not-transponder` on purpose, and it is not a joke: the first cut of
+    `_ours()` matched the bare substring `transponder`, so this hook — which merely mentions the word —
     was identified as ours and deleted. Identity is the script we install, not a word that appears
     in a command line."""
     settings = tmp_path / "settings.json"
-    foreign = {"type": "command", "command": "echo not-repolock"}
+    foreign = {"type": "command", "command": "echo not-transponder"}
     settings.write_text(json.dumps({"hooks": {"PreToolUse": [{"matcher": "Bash",
                                                               "hooks": [foreign]}]}}), encoding="utf-8")
     claude_code.install()
@@ -116,11 +116,11 @@ def test_disable_can_clear_the_map(switchable):
 
 
 def test_an_env_override_is_reported_because_it_beats_the_file(switchable, monkeypatch):
-    """REPOLOCK_DISABLED wins over the panic file in BOTH directions. A session launched with
-    `REPOLOCK_DISABLED=0` will happily ignore an armed switch — so the switch has to say so out
+    """TRANSPONDER_DISABLED wins over the panic file in BOTH directions. A session launched with
+    `TRANSPONDER_DISABLED=0` will happily ignore an armed switch — so the switch has to say so out
     loud, rather than claiming an authority it does not have."""
     toggle.disable(reason="armed")
-    monkeypatch.setenv("REPOLOCK_DISABLED", "0")
+    monkeypatch.setenv("TRANSPONDER_DISABLED", "0")
 
     s = toggle.state()
     assert s["armed"] is True                     # the file is there...

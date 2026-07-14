@@ -1,7 +1,7 @@
 """The fair version of the study: give v2 EVERY benefit of the doubt and see if it still wins.
 
 Study 1 declared a scope from the session's FIRST written path. That is a strawman — a real agent
-declares from its TASK ("fix the MCP hole" -> repolock/**, tests/**, SPEC.md, ledger/**), not from
+declares from its TASK ("fix the MCP hole" -> transponder/**, tests/**, SPEC.md, ledger/**), not from
 wherever it happened to land first. It also compared only writer-vs-writer, while v1 refuses READERS
 too (a shell that reads takes the lock for its call).
 

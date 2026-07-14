@@ -83,7 +83,7 @@ is named, sha and all, with the recovery attached (§5).
 
 ## 2. The claims map
 
-- Claims live in one machine-global store (`$REPOLOCK_DIR`'s parent, `claims/`), **one file per
+- Claims live in one machine-global store (`$TRANSPONDER_DIR`'s parent, `claims/`), **one file per
   agent**, written atomically. Never a shared list: a list is read-modify-write, and a store that
   loses a claim under contention loses it exactly when it matters.
 - A claim carries: `session` (the harness session id — the same one the hooks see), `scope`
@@ -174,12 +174,23 @@ it at session start and on each return of control.
    the map until the lease lapses: the work is still there, and the map should say so;
 7. **fail open, silently for the flow, loudly for the eye**: a crashing adapter must never block
    work — losing a note is an inconvenience; blocking would be the lock's disease in the
-   informer's coat;
+   informer's coat. This MUST hold when the hook **command itself cannot start** — a moved,
+   deleted, or renamed script — not only when the code inside it throws. A harness that treats a
+   launcher failure as a block (many read a non-zero exit as "deny") will wedge every gated tool
+   the instant the script goes missing, and it will do so *fail-closed*, which is the opposite of
+   this obligation. Learned the hard way: renaming the package pulled the script out from under its
+   own wired path and blocked Bash, Edit, Write and every MCP tool at once — including the kill
+   switch. So the wired command MUST degrade to a no-op it cannot fail to run: either a tiny
+   wrapper that exits 0 when the real script is absent, or an install that re-points the moment its
+   target moves. **A gate you cannot reach to turn off is the one thing worse than no gate**, and
+   that is doubly true here, where there is no gate to justify the risk;
 8. offer a **kill switch** that reaches sessions already running (a file checked on every call,
-   `~/.repolock/DISABLED`) and that does not need a terminal (an MCP tool). An informer cannot
+   `~/.transponder/DISABLED`) and that does not need a terminal (an MCP tool). An informer cannot
    wedge the machine, but it can be wrong, noisy or slow, and off must mean off, everywhere,
-   instantly. "On" must re-wire the hooks as well as disarm — reporting on while feeding nothing
-   is the worst of the three states.
+   instantly. **The switch MUST be reachable even when the adapter script is gone** (obligation 7):
+   a file checked by a wrapper, or a harness that fails a missing hook open, so "off" does not
+   depend on the very script that broke. "On" must re-wire the hooks as well as disarm — reporting
+   on while feeding nothing is the worst of the three states.
 
 ## 8. What kills this design
 

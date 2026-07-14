@@ -31,7 +31,7 @@ import json
 import os
 import subprocess
 
-from repolock import env, scope, witness
+from transponder import env, scope, witness
 
 SEEN_DIR = "seen"            # per-(session, repo): the last HEAD this session saw — the drift check
 SNAP_DIR = "snap"            # ...and the witness's before-picture for the tool now running
@@ -202,7 +202,7 @@ def watch(repo: str, session: str) -> list[str]:
     if _recall(SNAP_DIR, session, repo) and not _recall(WARNED_DIR, session, repo):
         _remember(WARNED_DIR, session, repo, "1")
         notes.append("repo-scope: the witness's settle half (PostToolUse) is not wired, so writes "
-                     "here are NOT being observed. Fix the hooks (python -m repolock.toggle on) and "
+                     "here are NOT being observed. Fix the hooks (python -m transponder.toggle on) and "
                      "restart this session — it snapshotted its hooks when it started.")
     _remember(SNAP_DIR, session, repo, json.dumps(witness.snapshot(repo)))
     return notes

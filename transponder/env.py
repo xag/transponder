@@ -1,9 +1,9 @@
 """The membrane: every effect the channel depends on, and nothing else.
 
-`repolock/scope.py` (the claims map) and `repolock/witness.py` (what actually happened) are pure
+`transponder/scope.py` (the claims map) and `transponder/witness.py` (what actually happened) are pure
 logic over this module. Everything nondeterministic lives here — the clock, the claim files on
 disk, and git — so that the boundary is one import away and any trajectory can be recorded and
-replayed (see repolock/flight.py).
+replayed (see transponder/flight.py).
 
 Keep this module dumb. No policy, no decisions: read the world, write the world, and let the other
 side judge. A function that branches on what it read belongs on the other side.
@@ -27,7 +27,7 @@ def lock_dir() -> str:
     """The state directory's anchor (the name predates the rename — claims, memos and the switch
     all live beside it). Deliberately outside every repo: state about a checkout must never show
     up in `git status` as an edit of its own."""
-    d = os.getenv("REPOLOCK_DIR") or os.path.join(os.path.expanduser("~"), ".repolock", "locks")
+    d = os.getenv("TRANSPONDER_DIR") or os.path.join(os.path.expanduser("~"), ".transponder", "locks")
     os.makedirs(d, exist_ok=True)
     return d
 
@@ -39,7 +39,7 @@ def disabled_path() -> str:
 
 
 def disabled() -> bool:
-    """The panic switch: `~/.repolock/DISABLED` (or REPOLOCK_DISABLED=1) and every adapter becomes
+    """The panic switch: `~/.transponder/DISABLED` (or TRANSPONDER_DISABLED=1) and every adapter becomes
     a no-op that blocks nothing.
 
     A file rather than only an env var, and checked on every hook call rather than at install time,
@@ -48,7 +48,7 @@ def disabled() -> bool:
     var they were launched without. Touching a file can. Uninstalling should never require a
     machine-wide restart of the work it is holding up.
     """
-    value = os.getenv("REPOLOCK_DISABLED")
+    value = os.getenv("TRANSPONDER_DISABLED")
     if value is not None:                 # an explicit setting wins, in BOTH directions: a test (or
         return value.strip().lower() in ("1", "true", "on", "yes")   # a session) must be able to
                                           # turn the lock back on without deleting the machine's
@@ -57,14 +57,14 @@ def disabled() -> bool:
 
 
 def recording() -> bool:
-    """Is flight recording on? ON by default — `REPOLOCK_FLIGHT=0` (or `false`/`off`/`no`) is the
+    """Is flight recording on? ON by default — `TRANSPONDER_FLIGHT=0` (or `false`/`off`/`no`) is the
     only way to switch it off.
 
     It lives here, in the stdlib-only module, so that a caller can ask the question without
-    importing repolock.flight — importing that module is what pulls in flight_recorder, so asking
+    importing transponder.flight — importing that module is what pulls in flight_recorder, so asking
     must not be the thing that answers.
     """
-    value = os.getenv("REPOLOCK_FLIGHT")
+    value = os.getenv("TRANSPONDER_FLIGHT")
     if value is None:
         return True                       # unset is the default, and the default is ON
     return value.strip().lower() not in ("0", "false", "off", "no", "")
@@ -74,8 +74,8 @@ def flight_dir() -> str:
     """Where recordings land: absolute, and outside every repo, for the same reason lock_dir is.
     The hook runs with cwd set to the session's own checkout, so a relative default would drop a
     recording directory into every repo on the machine and dirty the tree it is watching."""
-    return os.getenv("REPOLOCK_FLIGHT_DIR") or os.path.join(
-        os.path.expanduser("~"), ".repolock", "flight")
+    return os.getenv("TRANSPONDER_FLIGHT_DIR") or os.path.join(
+        os.path.expanduser("~"), ".transponder", "flight")
 
 
 def canonical(path: str) -> str:

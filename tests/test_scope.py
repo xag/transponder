@@ -17,7 +17,7 @@ Three claims, in the order they matter:
 import os
 import subprocess
 
-from repolock import scope
+from transponder import scope
 
 from test_adapters import CLAUDE, claude_edit, claude_shell, run_hook
 
@@ -88,7 +88,7 @@ def test_a_lapsed_claim_binds_nobody(repo, monkeypatch):
     dirs(repo, "api")
     declare(repo, "A", ["api/**"])
 
-    from repolock import env
+    from transponder import env
     real_now = env.now
     monkeypatch.setattr(env, "now", lambda: real_now() + scope.LEASE_SECONDS + 1)
 

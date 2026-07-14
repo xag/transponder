@@ -1,10 +1,12 @@
-# repolock
+# transponder
 
 One developer, several AI agent sessions, one machine of shared checkouts.
 
-**This is no longer a lock, despite the name** (a rename is coming). It is an **information
-layer**: agents declare where they will write, a witness reports what actually happened, and a
-courier carries both into every agent's context. **Nothing is ever refused.**
+**Not a lock** — the name is the honest one now. It is an **information layer**: agents declare
+where they will write, a witness reports what actually happened, and a courier carries both into
+every agent's context, the way an aircraft transponder announces position and intent so others can
+keep clear. **Nothing is ever refused.** (This repo was `repolock` through v1, when it *was* a
+lock; the history is in git.)
 
 > ### How a lock became a channel
 >
@@ -43,9 +45,9 @@ courier carries both into every agent's context. **Nothing is ever refused.**
 ## Install (Claude Code)
 
 ```bash
-git clone https://github.com/xag/repolock && cd repolock
+git clone https://github.com/xag/transponder && cd transponder
 uv sync            # or: pip install .
-python -m repolock.toggle on        # wires the hooks at user scope; idempotent
+python -m transponder.toggle on        # wires the hooks at user scope; idempotent
 ```
 
 Four events, all information: `PreToolUse` (the courier + the witness's before-picture; matcher
@@ -54,7 +56,7 @@ a clean tree; the ask-once on a dirty one), `SessionStart` (the drift check). A 
 `PostToolUse` is a **blind witness** — the hook detects it and says so, once, rather than letting
 anyone believe they are covered.
 
-**Register the MCP server too:** `uv run python -m repolock.server`. It is the channel — the tools
+**Register the MCP server too:** `uv run python -m transponder.server`. It is the channel — the tools
 the notes point at:
 
 | tool | what it does |
@@ -101,22 +103,22 @@ entire point, and the thing the old lock refused both times it ever mattered.
 
 ## Recording (on by default)
 
-Every claim, conflict and witnessed write lands on a flight-recorder tape (`~/.repolock/flight`,
+Every claim, conflict and witnessed write lands on a flight-recorder tape (`~/.transponder/flight`,
 extra `flight`). The tape is the evidence for the design's own bet — *agents contain their work
 once containment is visible* — and the spec's §8 lists exactly what observation kills it. An
 invariant suite judges every recorded call; the crucial one condemns a **double-booked map**, and
 its negative control plants a broken overlap function and requires the oracle to catch it.
-`REPOLOCK_FLIGHT=0` turns recording off.
+`TRANSPONDER_FLIGHT=0` turns recording off.
 
 ## The off switch
 
-`lock_disable("why")` from any agent session, or `python -m repolock.toggle off` from a terminal.
-Either writes `~/.repolock/DISABLED`, which every hook checks on **every call** — so sessions
+`lock_disable("why")` from any agent session, or `python -m transponder.toggle off` from a terminal.
+Either writes `~/.transponder/DISABLED`, which every hook checks on **every call** — so sessions
 already running go quiet on their next tool use, no restart needed. An information layer cannot
 wedge the machine the way the lock could, but it can be wrong, noisy, or slow, and off must mean
 off. `lock_enable` re-wires the hooks as well as disarming, because *on* has to mean on.
 
-`REPOLOCK_DISABLED` (env) overrides the file in both directions and is reported by `lock_switch`
+`TRANSPONDER_DISABLED` (env) overrides the file in both directions and is reported by `lock_switch`
 precisely because it wins.
 
 ## Honest niche
@@ -131,7 +133,7 @@ convention, and this repo remains the reference.
 
 | variable              | meaning                                               |
 |-----------------------|-------------------------------------------------------|
-| `REPOLOCK_DIR`        | state directory anchor (default `~/.repolock/locks`)  |
-| `REPOLOCK_FLIGHT`     | recording; **on** unless set to `0`/`false`/`off`     |
-| `REPOLOCK_FLIGHT_DIR` | where recordings land (default `~/.repolock/flight`)  |
-| `REPOLOCK_DISABLED`   | the off switch; also `~/.repolock/DISABLED` (above)   |
+| `TRANSPONDER_DIR`        | state directory anchor (default `~/.transponder/locks`)  |
+| `TRANSPONDER_FLIGHT`     | recording; **on** unless set to `0`/`false`/`off`     |
+| `TRANSPONDER_FLIGHT_DIR` | where recordings land (default `~/.transponder/flight`)  |
+| `TRANSPONDER_DISABLED`   | the off switch; also `~/.transponder/DISABLED` (above)   |

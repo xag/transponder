@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import os
 
-from repolock import env
+from transponder import env
 
 
 def snapshot(repo: str) -> dict:

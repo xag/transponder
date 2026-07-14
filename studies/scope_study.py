@@ -31,7 +31,7 @@ import os
 import subprocess
 from datetime import datetime
 
-FLIGHT = os.path.expanduser("~/.repolock/flight")
+FLIGHT = os.path.expanduser("~/.transponder/flight")
 
 
 def porcelain_paths(lines):
@@ -67,9 +67,9 @@ def load():
                     repo = repo or kw.get("repo")
                     session = session or kw.get("session")
                     for e in r.get("events") or []:
-                        if e.get("fn") == "repolock.env.git_dirty":
+                        if e.get("fn") == "transponder.env.git_dirty":
                             dirty |= porcelain_paths(e.get("res"))
-                        elif e.get("fn") == "repolock.env.git_head" and e.get("res"):
+                        elif e.get("fn") == "transponder.env.git_head" and e.get("res"):
                             heads.append(e["res"].strip())
         except (OSError, json.JSONDecodeError, ValueError):
             continue

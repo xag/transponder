@@ -1,5 +1,5 @@
 [project]
-name = "repolock"
+name = "transponder"
 version = "0.1.0"
 description = "One developer, several AI agent sessions, one checkout — a lockfile convention (spec) plus its reference implementation"
 readme = "README.md"
@@ -26,4 +26,4 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["repolock"]
+packages = ["transponder"]

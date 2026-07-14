@@ -20,9 +20,9 @@ import sys
 
 import pytest
 
-from repolock import scope
+from transponder import scope
 
-CLAUDE = os.path.join(os.path.dirname(__file__), "..", "repolock", "hooks", "claude_code.py")
+CLAUDE = os.path.join(os.path.dirname(__file__), "..", "transponder", "hooks", "claude_code.py")
 
 
 def run_hook(script, payload):
@@ -125,7 +125,7 @@ def test_the_kill_switch_silences_every_event(repo, tmp_path):
     spammer with tenure. The file reaches sessions that already snapshotted their hooks."""
     os.makedirs(os.path.join(repo, "api"), exist_ok=True)
     scope.declare(repo, "A", ["api/**"], "working")
-    env_ = dict(os.environ, REPOLOCK_DISABLED="1", REPOLOCK_DIR=str(tmp_path / "locks"))
+    env_ = dict(os.environ, TRANSPONDER_DISABLED="1", TRANSPONDER_DIR=str(tmp_path / "locks"))
     payload = {"hook_event_name": "PreToolUse", "tool_name": "Edit",
                "tool_input": {"file_path": os.path.join(repo, "api", "x.py")},
                "cwd": repo, "session_id": "B"}
@@ -144,7 +144,7 @@ def test_a_missing_flight_recorder_costs_the_tape_not_the_courier(repo, tmp_path
     os.makedirs(os.path.join(repo, "api"), exist_ok=True)
     scope.declare(repo, "A", ["api/**"], "the rate limiter")
 
-    env_ = dict(os.environ, REPOLOCK_DISABLED="0", REPOLOCK_DIR=os.environ["REPOLOCK_DIR"],
+    env_ = dict(os.environ, TRANSPONDER_DISABLED="0", TRANSPONDER_DIR=os.environ["TRANSPONDER_DIR"],
                 PYTHONPATH=str(stub))
     payload = {"hook_event_name": "PreToolUse", "tool_name": "Edit",
                "tool_input": {"file_path": os.path.join(repo, "api", "x.py")},

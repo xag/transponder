@@ -33,7 +33,7 @@ from __future__ import annotations
 import json
 import os
 
-from repolock import env
+from transponder import env
 
 LEASE_SECONDS = 900
 

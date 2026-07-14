@@ -1,11 +1,11 @@
 """Repo Scope — a local (stdio) MCP server: the negotiation channel for shared checkouts.
 
-The hooks (repolock/hooks/claude_code.py) are the courier and the witness: they inform agents and
+The hooks (transponder/hooks/claude_code.py) are the courier and the witness: they inform agents and
 observe writes, and they never refuse a tool call. This server is the channel those notes point at
 — where an agent says what it will write, sees what everyone else said, and where a human (or a
 wedged session) turns the whole thing off.
 
-Run (local only, extra `mcp`): `uv run python -m repolock.server`   (register in your client)
+Run (local only, extra `mcp`): `uv run python -m transponder.server`   (register in your client)
 
 Identity: a claim is declared BY an agent about itself, so every scope tool takes the agent's own
 harness `session_id` — the same id the hooks see. Passing a name for yourself is not the identity
@@ -18,19 +18,19 @@ from __future__ import annotations
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
-from repolock import env, witness
+from transponder import env, witness
 
-mcp = FastMCP("repo-scope")
+mcp = FastMCP("transponder")
 
-# Recording is ON by default (REPOLOCK_FLIGHT=0 to disable): the tape has to exist before the
+# Recording is ON by default (TRANSPONDER_FLIGHT=0 to disable): the tape has to exist before the
 # incident, not after it.
 if env.recording():
-    from repolock import flight
+    from transponder import flight
     flight.install()
 
 
 def _fmt_scopes(repo: str) -> str:
-    from repolock import scope
+    from transponder import scope
 
     claims = scope.touching(repo)
     dirty = env.git_dirty(repo)
@@ -76,7 +76,7 @@ def declare_scope(repo: str, scope: list[str], session_id: str, intent: str = ""
     issue for the part that is theirs. Do NOT just write into their region: the witness will see
     it, and both of you will be told.
     """
-    from repolock import scope as sc
+    from transponder import scope as sc
 
     v = sc.declare(repo, session_id, scope, intent)
     if v["status"] == "granted":
@@ -103,7 +103,7 @@ def declare_scope(repo: str, scope: list[str], session_id: str, intent: str = ""
 def extend_scope(repo: str, add: list[str], session_id: str) -> str:
     """Widen the scope you already hold — for when you discover mid-task that you need one more
     module. It answers immediately: granted, or who is there and exactly where you overlap."""
-    from repolock import scope as sc
+    from transponder import scope as sc
 
     v = sc.extend(repo, session_id, add)
     if v["status"] == "granted":
@@ -127,7 +127,7 @@ def release_scope(repo: str, session_id: str, drop: list[str] | None = None) -> 
     against `repo`). Do it the moment a region stops being yours: a map that says things that are
     no longer true is worse than no map, and `.git/index` in particular should be held for the
     length of a commit and not one second more."""
-    from repolock import scope as sc
+    from transponder import scope as sc
 
     v = sc.release(session_id, drop, anchor=repo)
     left = ", ".join(v["scope"]) if v["scope"] else "nothing — you are off the map"
@@ -162,14 +162,14 @@ def lock_disable(reason: str, clear_held_locks: bool = True) -> str:
     immediately — including in sessions already running.
 
     An information layer cannot wedge the machine the way the old lock could, but it can be wrong,
-    noisy, or slow, and off must still mean off. It writes `~/.repolock/DISABLED`, which every hook
+    noisy, or slow, and off must still mean off. It writes `~/.transponder/DISABLED`, which every hook
     checks on every call, so running sessions go quiet on their next tool use — no restart, no
     settings.json edit (a harness snapshots its hooks at startup and cannot see one anyway).
 
     `clear_held_locks` also drops the claim files, so the map is empty when it comes back on.
     `reason` is written into the switch file for whoever finds it later.
     """
-    from repolock import toggle
+    from transponder import toggle
 
     v = toggle.disable(reason=reason, clear=clear_held_locks)
     out = ["repo-scope is now OFF — every hook, in every session, running or not, is a no-op.",
@@ -190,7 +190,7 @@ def lock_enable() -> str:
     """Turn it back on: disarm the switch AND re-wire the harness hooks. Both halves, because "on"
     has to mean on — removing the switch file while the hooks are missing from settings.json yields
     a map that reports itself live while nothing feeds it, which is worse than being off."""
-    from repolock import toggle
+    from transponder import toggle
 
     v = toggle.enable()
     out = [toggle.render(toggle.state())]
@@ -198,7 +198,7 @@ def lock_enable() -> str:
         out.append("\nWARNING: the hooks could not be written to settings.json — nothing is feeding "
                    "the map or the witness.")
     if v["env_override"] is not None:
-        out.append(f"\nWARNING: REPOLOCK_DISABLED={v['env_override']!r} is set in this server's "
+        out.append(f"\nWARNING: TRANSPONDER_DISABLED={v['env_override']!r} is set in this server's "
                    "environment and overrides the file.")
     return "\n".join(out)
 
@@ -208,7 +208,7 @@ def lock_switch() -> str:
     """Is it on? Is it wired? What is on the map right now? Distinguishes the three states that
     look alike from inside a session: ON, switched OFF, and the dangerous middle one where it
     believes it is on but its hooks were never wired."""
-    from repolock import toggle
+    from transponder import toggle
 
     return toggle.render(toggle.state())
 

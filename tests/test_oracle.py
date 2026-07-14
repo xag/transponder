@@ -15,15 +15,15 @@ import pytest
 
 fr = pytest.importorskip("flight_recorder")
 
-from repolock import flight as scope_flight, invariants, scope  # noqa: E402
+from transponder import flight as scope_flight, invariants, scope  # noqa: E402
 
 
 @pytest.fixture
 def recorded_scopes(repo, tmp_path, monkeypatch):
     """A channel lifecycle: a grant, a disjoint grant, and a conflict."""
-    monkeypatch.setenv("REPOLOCK_FLIGHT", "1")
+    monkeypatch.setenv("TRANSPONDER_FLIGHT", "1")
     flightdir = tmp_path / "flight-scopes"
-    monkeypatch.setenv("REPOLOCK_FLIGHT_DIR", str(flightdir))
+    monkeypatch.setenv("TRANSPONDER_FLIGHT_DIR", str(flightdir))
     scope_flight.install()
     try:
         scope.declare(repo, "A", ["api/**"], "the rate limiter")   # 0 granted

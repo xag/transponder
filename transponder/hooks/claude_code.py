@@ -24,10 +24,10 @@ Four events, two jobs:
   SessionStart the drift check: has history moved under what this session remembers?
 
 Install: a `hooks` block in ~/.claude/settings.json (user scope, so every repo on the machine is
-covered) wiring all four events — `python -m repolock.toggle on` writes it. The matchers include
+covered) wiring all four events — `python -m transponder.toggle on` writes it. The matchers include
 `mcp__.*` so MCP calls are witnessed; they are never, under any circumstance, refused.
 
-Kill switch: `~/.repolock/DISABLED` (see env.disabled) makes every event a no-op, including in
+Kill switch: `~/.transponder/DISABLED` (see env.disabled) makes every event a no-op, including in
 sessions that already snapshotted their hooks. An informer cannot wedge the machine the way the
 lock could, but it can be wrong or noisy, and off must still mean off, everywhere, instantly.
 """
@@ -39,12 +39,12 @@ import os
 import sys
 
 try:
-    from repolock import env
-    from repolock.hooks import common
+    from transponder import env
+    from transponder.hooks import common
 except ImportError:                               # run straight from a checkout, uninstalled
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    from repolock import env
-    from repolock.hooks import common
+    from transponder import env
+    from transponder.hooks import common
 
 # The tools that declare what they will write — the input carries the path, so the heads-up can
 # fire BEFORE the write. Everything else is observed after the fact, because v1 §7a's proof stands:
@@ -52,7 +52,7 @@ except ImportError:                               # run straight from a checkout
 WRITING_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 
 # Our OWN MCP tools, matched on the tool's name rather than its server's (the server can be
-# registered under any name). Skipped entirely: they operate on ~/.repolock, never on a working
+# registered under any name). Skipped entirely: they operate on ~/.transponder, never on a working
 # copy, so there is nothing for the witness to see and no reason to spend two git calls looking.
 OUR_MCP_TOOLS = {"lock_drift", "lock_disable", "lock_enable", "lock_switch",
                  "declare_scope", "extend_scope", "release_scope", "scopes"}
@@ -79,7 +79,7 @@ def _record() -> None:
     if not env.recording():
         return
     try:
-        from repolock import flight
+        from transponder import flight
     except ImportError:
         return
     flight.install()
@@ -200,7 +200,7 @@ EVENTS = {
 
 def settings_path() -> str:
     """User scope, not project scope: the courier covers every checkout on the machine."""
-    return os.getenv("REPOLOCK_CLAUDE_SETTINGS") or os.path.join(
+    return os.getenv("TRANSPONDER_CLAUDE_SETTINGS") or os.path.join(
         os.path.expanduser("~"), ".claude", "settings.json")
 
 
@@ -212,8 +212,8 @@ def hook_command() -> str:
 
 
 # The adapter script's own directory, which is what makes a hook entry OURS. Specific on purpose:
-# a bare-substring test once identified `echo not-repolock` as ours and deleted it on uninstall.
-MARKER = "repolock/hooks/"
+# a bare-substring test once identified `echo not-transponder` as ours and deleted it on uninstall.
+MARKER = "transponder/hooks/"
 
 
 def _ours(entry: dict) -> bool:
