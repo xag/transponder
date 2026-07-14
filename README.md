@@ -49,7 +49,7 @@ One developer, several AI agent sessions, one checkout.
 > — that is what a refusal is — so the off switch is deliberately not a shell command:
 >
 > - **from an agent session** (including one that is currently wedged): call the MCP tool
->   **`lock_disable(reason)`**. The hook does not gate MCP tools, so it always gets through.
+>   **`lock_disable(reason)`**. The hook never gates an MCP call, so it always gets through.
 >   `lock_enable()` puts it back; `lock_switch()` says whether it is on, wired, and what it holds.
 > - **from a terminal**: `python -m repolock.toggle off` (`on`, `status`).
 >
@@ -72,15 +72,16 @@ repolock is **a protocol plus a reference implementation, not a service**:
 - **`repolock/`** — the reference library. Pure stdlib, zero dependencies:
   `acquire` / `renew` / `release` / `go_idle` / `status` / `drift`.
 - **`repolock/hooks/`** — the adapters that make the lock *binding*: `claude_code.py`
-  (PreToolUse/Stop/SessionStart) and `cursor.py` (preToolUse/beforeShellExecution/stop).
+  (PreToolUse/PostToolUse/Stop/SessionStart) and `cursor.py` (preToolUse/beforeShellExecution/stop).
   Enforcement cannot be an MCP tool — a tool is something the model chooses to call, and the
   offending session never chooses to. A lock taken through one vendor's hook holds out a
   session arriving through the other's; the test suite executes exactly that.
 - **`repolock/server.py`** *(extra `mcp`)* — a read-mostly stdio MCP server for visibility, the
   deliberate human override, and the off switch: `lock_status`, `lock_wait`, `lock_drift`,
   `lock_debug`, `force_unlock`, and `lock_disable` / `lock_enable` / `lock_switch`. MCP is where
-  these belong precisely because the hook does not gate MCP tools — so they still work from inside
-  a session the lock has refused, which is the only moment anyone reaches for them.
+  these belong precisely because the hook never *gates* an MCP call — so they still work from inside
+  a session the lock has refused, which is the only moment anyone reaches for them. (The hook does
+  *watch* MCP calls, to catch one that writes the tree; it just never refuses one. SPEC §7c.)
 
 The point is cross-tool: every agent on the machine — Claude Code, Cursor, Codex CLI, whatever
 comes next — honoring the same lockfile. A mixed fleet is exactly the scenario the lock guards.
@@ -131,7 +132,7 @@ without it leaves every write on that platform unguarded, silently and for as lo
 
 It carries `lock_wait`, and that is how a blocked session waits. It cannot wait by itself: waiting
 means running `sleep`, `sleep` is a shell command, and the shell is exactly what the lock just
-refused it. The hook does not gate MCP tools, so that is the one channel that still works from
+refused it. The hook never gates an MCP call, so that is the one channel that still works from
 inside a refusal — it is also the only reason [#4](https://github.com/xag/repolock/issues/4) could
 be reported at all, by a session that could not run a shell. Install the hooks without the server
 and a refused session has nothing to do but spin.
@@ -174,9 +175,9 @@ REPO LOCKED — another agent session is part-way through changing this working 
              M server.py
 ```
 
-Then: what is still open (`Read`/`Grep`/`Glob` are never gated; every other repo is free), and two
-ways to wait — because **a blocked session cannot wait by itself**. `sleep` is a shell command, and
-the shell is exactly what was refused.
+Then: what is still open (`Read`/`Grep`/`Glob` are never gated, every MCP tool is still yours, and
+every other repo is free), and two ways to wait — because **a blocked session cannot wait by
+itself**. `sleep` is a shell command, and the shell is exactly what was refused.
 
 - **Subscribe**, and get on with something else. The refusal hands over a one-time command; run it
   in the background and your harness wakes you the moment the lock frees. That command is minted by
@@ -250,8 +251,15 @@ Uninstalling should never require restarting the work it is holding up.
 
 **It is an MCP tool, not a shell command.** When the lock misfires it refuses your *shell*. An off
 switch you have to type into a terminal is therefore unreachable at exactly the moment you need it —
-which is a funny thing to discover about a panic button. The hook does not gate MCP tools, so
+which is a funny thing to discover about a panic button. The hook never gates an MCP call, so
 `lock_disable` always gets through; the CLI is a convenience for a human, never the mechanism.
+
+That is a **requirement**, not an accident of which tool names happen to be in the matcher, and
+SPEC §7c now says so normatively — because the hook was one line of config away from breaking it.
+Its fallthrough treats any tool that is not a declared write as a shell, so widening the matcher to
+`mcp__.*` without the rest of the change sent `lock_disable` through the write gate and had it
+**refused by the lock it exists to switch off**. If you are ever tempted to "just gate MCP too":
+that is what happens, and it is what [#3](https://github.com/xag/repolock/issues/3) asked for.
 
 And `lock_enable` re-wires the hooks as well as clearing the switch, because *on* has to mean on: a
 repolock that reports itself enabled while its hooks are missing from `settings.json` guards nothing
