@@ -70,6 +70,21 @@ command, and v1 §7a is the proof that this is not decidable.
 Resource scopes dissolve it without anyone reading anything. **An agent that intends to commit MUST
 reserve `git:index` and `git:HEAD`.** Commits serialise. Nobody parsed a command line to get there.
 
+### 1b. …and `git:index` MUST be held briefly, or v2 collapses back into v1
+
+**Every writing session in the tapes moved HEAD — 13 out of 13 (§10.1).** Every writer commits. So
+`git:index` is not an occasional resource, it is one that *every* writer needs.
+
+Which sets a hard constraint the obvious design would have got wrong: **`git:index` MUST be acquired
+immediately before a commit and released immediately after it.** It MUST NOT be held for the life of
+a scope. If a session reserves the index when it declares, then every writer conflicts with every
+other writer for its whole lifetime — which is the v1 whole-checkout mutex, rebuilt at greater cost
+and with a worse name.
+
+So a scope has resources of two lifetimes: **held** (the paths you are working) and **taken briefly**
+(the index, at the moment you commit). An implementation that cannot express that difference cannot
+express v2.
+
 ## 2. The protocol
 
 Every step below is an MCP call. MCP is ungated by construction (v1 §7c), so **an agent can always
@@ -84,10 +99,16 @@ scopes(repo)                   -> who holds what, and why
 ```
 
 **`declare` is all-or-nothing.** An agent states its whole scope up front and is granted all of it or
-none of it. This is conservative two-phase locking, and it is the reason v2 has no deadlock: no
-incremental acquisition, therefore no cycle, therefore no wait-for graph, no detection, no victim
-selection, and nothing to debug at 2am on a wedged laptop. Deadlock is designed out rather than
-managed.
+none of it. This is conservative two-phase locking, and it is *meant* to be the reason v2 has no
+deadlock: no incremental acquisition, therefore no cycle, therefore no wait-for graph, no detection,
+no victim selection, and nothing to debug at 2am on a wedged laptop.
+
+> **The tapes say this is not enough (§10.1).** A scope inferred from a session's first write is
+> wrong for **92%** of real sessions, which are **wide** — a median of 20 paths across 3 top-level
+> directories, the worst 129 across 15. Agents discover what they must touch as they go. So `extend`
+> is **the normal path, not the exception**, and the deadlock-freedom above is a property of a rule
+> nobody will be able to follow. §5 therefore carries the design's weight, and it must be built as
+> the main road rather than the escape hatch.
 
 **A conflict is an answer, not a refusal.** v1 tells a blocked agent *why* it is blocked and hands it
 a way to wait. v2 tells it **who holds what**, so it can come back with a scope that fits and proceed
@@ -252,10 +273,43 @@ handback (§5, §5a); fail-open-loudly; the off switch (§7 obligation 11); **an
 
 ## 10. Open, and not to be closed by assertion
 
-1. **Scope granularity in practice.** Agents do not reliably know where they will write. If declared
-   scopes are wrong most of the time, §7b's alarm fires constantly, and an alarm that always fires is
-   an alarm nobody reads. This is the likeliest way v2 fails, and it is measurable *before* building
-   it: take the existing tapes and ask what scope each recorded session would have had to declare.
+1. ~~**Scope granularity in practice.**~~ **ANSWERED FROM THE TAPES — and it moved the design.**
+
+   Every session ever recorded on this machine (26 on real repos, 13 of them writers) was replayed
+   and asked: what scope would you have had to declare, and would you have stayed inside it?
+
+   | | |
+   |---|---|
+   | paths written per writing session | **median 20**, max 129 |
+   | top-level dirs it had to reserve | **median 3**, max 15 |
+   | sessions that wrote outside a scope inferred from their FIRST write | **92%** (308 out-of-scope writes) |
+   | writing sessions that moved HEAD | **13 / 13 — every one** |
+   | moments where two sessions were alive on one checkout at once | **2** |
+   | …of those, genuinely disjoint (perfect foresight, no shared file or dir) | **2 — both of them** |
+
+   Read it in three parts, because it does not all point one way.
+
+   **For v2:** every observed collision was v1 refusing work that had no reason to be refused. Both
+   pairs were fully disjoint — not merely different files, different *directories*. That is precisely
+   the case v2 exists for, and v1 got it wrong both times it arose.
+
+   **Against v2:** *contention is rare.* Two overlapping pairs in two days of real work — and that is
+   an **over**-count, since a session id spans hours and the windows are generous. The pain v2
+   relieves is occasional; the machinery it demands (negotiation, extension, violation handling, a
+   weaker exclusion guarantee) is paid for continuously. **The burden of proof is on v2, and this
+   table does not discharge it.**
+
+   **And it breaks two things this document said:** sessions are **wide** and they **spread** (92%),
+   so `declare`-up-front cannot carry the deadlock-freedom argument (§3) — `extend` is the main road.
+   And every writer commits, so `git:index` must be short-held or v2 degenerates into v1 (§1b).
+
+   **What this study cannot say.** N is small, it is two days, and it is one human. Worse, it is
+   **selection-biased in v1's favour**: the tape records a world in which the whole-checkout lock
+   already makes concurrent sessions painful, so a habit of running one at a time is exactly what it
+   would produce. It measures the world v1 made. Re-run it after any period of deliberately parallel
+   work before betting anything on the frequency of contention.
+
+   Reproduce: the study is `scope_study.py` / `scope_study2.py` against `~/.repolock/flight`.
 2. **Who is an agent?** v1 keys on the harness session id, and subagents share their parent's
    (`hyp-subagents-share-the-session-id`). Scopes make that reentrancy sharper, not softer: two
    subagents of one session with disjoint scopes are two writers with one identity.
