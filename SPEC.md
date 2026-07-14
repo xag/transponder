@@ -9,11 +9,10 @@ regardless of vendor.
 This document is normative. The Python package in this repository is a reference implementation,
 not the definition. **MUST/SHOULD/MAY** as in RFC 2119.
 
-> **v1 of this spec described a lock.** It refused tool calls, held a mutex through every shell,
-> and took its own machine down four times (#4, #7, #10, #11) — every incident a *reader* or an
-> *innocent* refused, never a collision prevented that mattered: the only two real contentions in
-> its recorded history were sessions working different directories. v1 is deleted, not deprecated.
-> The history lives in git and in the ledger; the lessons that survive are baked in below.
+> **This replaces v1, which was a lock** — a mutex that refused tool calls it judged unsafe. It was
+> removed because refusal cost more than it saved: genuine collisions were rare, while refusing
+> blocked far more work than it protected, and a command's effect cannot be judged before it runs
+> anyway. This version informs instead of refusing; §0 is the argument for that trade.
 
 ## 0. The model, in four sentences
 

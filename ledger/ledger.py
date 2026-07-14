@@ -228,7 +228,7 @@ DECISIONS = [
                   "doing — which is #4's cruellest detail ('`sleep` was also a write') arriving "
                   "through the new door, and it was not noticed until the user asked what the "
                   "blocked process was supposed to DO.\n\n"
-                  "And the refusal itself said `session 8663de9b (Bash)`. An ID and a tool name. "
+                  "And the refusal itself said `session <id> (Bash)`. An ID and a tool name. "
                   "Nothing a session could act on: not what the holder is doing, not what it has "
                   "already touched, not what is still permitted, not how long to wait. An agent "
                   "given that will rattle the handle, which is precisely what was observed.\n\n"
@@ -716,7 +716,7 @@ HYPOTHESES = [
                            "handback refusal is not working, and it fires on the ANNOYANCE, "
                            "with nothing lost, straight off any recording.",
                            "fired_on": "2026-07-14 (retrospectively, on the #11 tape: "
-                                       "flight-20260714-110251-13056.jsonl)"}),
+                                       "a recorded tape)"}),
          ]),
 
     Node(id="hyp-the-dirty-handback-can-be-refused", kind="hypothesis",

@@ -1,139 +1,105 @@
 # transponder
 
-One developer, several AI agent sessions, one machine of shared checkouts.
+Several AI agent sessions, one machine, shared git checkouts — without them clobbering each
+other's work.
 
-**Not a lock** — the name is the honest one now. It is an **information layer**: agents declare
-where they will write, a witness reports what actually happened, and a courier carries both into
-every agent's context, the way an aircraft transponder announces position and intent so others can
-keep clear. **Nothing is ever refused.** (This repo was `repolock` through v1, when it *was* a
-lock; the history is in git.)
+Git assumes a working tree has one author. Run two agents against the same checkout and that breaks
+quietly: they overwrite each other's edits, or reason about commits a concurrent rebase already
+replaced. `transponder` is an **information layer** that prevents this by visibility rather than
+locking:
 
-> ### How a lock became a channel
->
-> v1 was a mutex on the write path of every agent session on the machine, and it took that machine
-> down four times. Twice by misreading commands (#4 refused *readers*; #7 read `print("a -> b")` as
-> a redirect); once by minting an escape hatch that could not run (#10 — the waiter's own ticket
-> died in bash, and dying looked identical to succeeding); once by parking a lock on an artifact
-> directory and refusing `ls` for ten minutes (#11). Each time the cure was more machinery: tickets,
-> degraded modes, idle boundaries, an off switch.
->
-> Then the tapes were read. In the entire recorded history of the lock, it had faced exactly **two**
-> real contentions — and both were sessions working **different directories**, refused for no
-> reason. Meanwhile every incident it caused had the same root: not malice, not even carelessness —
-> **an agent that did not know another agent was there.** You do not build a mutex against
-> ignorance. You inform it.
->
-> So the mutex is deleted. What remains never says no:
->
-> - **the map** — agents declare scopes (canonical filesystem paths; `.git/index` is just a file,
->   and reserving it around a commit is what keeps `git add -A` from sweeping a neighbour's
->   half-finished work into your commit). The map never double-books; a conflicting declaration
->   is answered with who, why, the exact overlap to subtract, and what is free — and nothing about
->   your *work* is blocked either way.
-> - **the courier** — hooks that print into an agent's context: "this checkout is shared, agent X
->   is working `api/**`", once; "the file you are about to edit is inside X's region", before the
->   write; "history moved under you", at session start.
-> - **the witness** — a fingerprint before and after every shell and MCP call. A write that lands
->   in another agent's region is named, loudly, to the agent that did it, with the recovery
->   attached. A fact off the tree, never a guess about a command — the one v1 lesson that survives
->   everything: what a command will write is not decidable from its text, so nothing here reads
->   commands.
->
-> One deliberate exception: at the **Stop boundary**, a session leaving a dirty tree it was working
-> is asked — once, never twice — to commit, ignore, or stash. That blocks no other agent, ever.
+- **The map** — an agent declares the files or subtrees it is about to write (`declare_scope`). The
+  map never double-books a region; a conflicting declaration is answered with who holds the overlap
+  and what is free.
+- **The courier** — harness hooks tell an agent what it cannot see from inside its own context: that
+  the checkout is shared, that the file it is about to edit sits in another agent's declared region,
+  or that history moved under it.
+- **The witness** — a fingerprint before and after each shell or MCP call. A write that lands in
+  another agent's region is reported to the agent that made it, with the recovery attached.
+
+**Nothing is ever refused.** The agents cooperate — they work for one person, and the failure being
+prevented is an agent not knowing another is there, not malice. The design and its rationale are in
+[SPEC.md](SPEC.md). (Through v1 this was `repolock`, a mutex; the git history has that story.)
 
 ## Install (Claude Code)
 
 ```bash
 git clone https://github.com/xag/transponder && cd transponder
-uv sync            # or: pip install .
+uv sync
 python -m transponder.toggle on        # wires the hooks at user scope; idempotent
+uv run python -m transponder.server    # register this MCP server in your client
 ```
 
-Four events, all information: `PreToolUse` (the courier + the witness's before-picture; matcher
-includes both shells and `mcp__.*`), `PostToolUse` (the witness settles), `Stop` (release claims on
-a clean tree; the ask-once on a dirty one), `SessionStart` (the drift check). A missing
-`PostToolUse` is a **blind witness** — the hook detects it and says so, once, rather than letting
-anyone believe they are covered.
+The hooks run on four events — `PreToolUse` and `PostToolUse` (the courier and the witness; matchers
+cover both shells and `mcp__.*`), `Stop`, and `SessionStart` (the drift check). None of them ever
+blocks a tool call.
 
-**Register the MCP server too:** `uv run python -m transponder.server`. It is the channel — the tools
-the notes point at:
+## The channel (MCP tools)
 
 | tool | what it does |
 |---|---|
-| `scopes(repo)` | who is working this checkout and where — call it BEFORE you plan |
+| `scopes(repo)` | who is working this checkout and where — call it before you plan |
 | `declare_scope(repo, scope, session_id, intent)` | put your region on the map |
-| `extend_scope(repo, add, session_id)` | widen when you discover you need more |
-| `release_scope(repo, session_id, drop?)` | take yourself off the map the moment a region stops being yours |
-| `lock_drift(repo, seen_head)` | has history moved under you? |
-| `lock_disable` / `lock_enable` / `lock_switch` | the off switch (below) |
+| `extend_scope(repo, add, session_id)` | widen when you find you need more |
+| `release_scope(repo, session_id, drop?)` | come off the map when a region stops being yours |
+| `lock_drift(repo, seen_head)` | has history moved under you since you last looked? |
+| `lock_disable` / `lock_enable` / `lock_switch` | the off switch |
 
-## What it feels like
+Scopes are filesystem paths — a file, a subtree (`api/**`), or `**` for the whole checkout; spelled
+relative to `repo` and canonicalised, so two spellings of one file cannot be held twice. `.git/index`
+is an ordinary path: reserve it around a commit so `git add -A` cannot sweep a neighbour's
+unfinished work into yours.
 
-An agent walking into a checkout someone else is working:
+## What an agent sees
 
-```
-THIS CHECKOUT IS SHARED — you are not alone in c:/users/x/projects/app:
-
-  agent e85314e1 is working c:/users/x/projects/app/api/**  — the rate limiter
-
-Nothing is blocked. But their regions are their half-finished work: stay out of them, and
-SAY WHERE YOU WILL WRITE so they can stay out of yours:
-    declare_scope(repo, ['src/thing/**', 'tests/thing/**'], intent='what you are doing')
-```
-
-An agent about to edit a file in someone's region gets a **HEADS UP** naming the holder and their
-intent — before the write, and without blocking it. An agent whose shell *did* write into someone's
-region gets the loudest thing this library says:
+Walking into a shared checkout:
 
 ```
-SCOPE VIOLATION — you just wrote inside another agent's reserved region.
-  web/page.js
-     belongs to agent e85314e1 (c:/users/x/projects/app/web/**) — the page
+THIS CHECKOUT IS SHARED — you are not alone in ~/proj/app:
+  agent 7c1a is working ~/proj/app/api/**  — adding the rate limiter
 
+Nothing is blocked. Stay out of their region, and say where you will write:
+    declare_scope(repo, ['web/**'], intent='what you are doing')
+```
+
+A write that lands in another agent's region is named after the fact, with the fix:
+
+```
+SCOPE VIOLATION — you wrote inside another agent's reserved region.
+  web/page.js  belongs to agent 7c1a (~/proj/app/web/**)
   ...
-  3. YOU COMMITTED THEIR WORK. This is the one violation that is cleanly recoverable:
-         git reset --soft HEAD~1     # un-commit, keep the tree
-         git restore --staged <their paths>
-     Stage YOUR paths by name, never `-A`.
+  You committed their work. Recover it:
+      git reset --soft HEAD~1
+      git restore --staged <their paths>   # then stage yours by name, never -A
 ```
 
-Two agents with disjoint scopes work the same checkout **concurrently, in silence** — which is the
-entire point, and the thing the old lock refused both times it ever mattered.
+Two agents with disjoint scopes work the same checkout at once, in silence.
 
-## Recording (on by default)
+## Recording
 
-Every claim, conflict and witnessed write lands on a flight-recorder tape (`~/.transponder/flight`,
-extra `flight`). The tape is the evidence for the design's own bet — *agents contain their work
-once containment is visible* — and the spec's §8 lists exactly what observation kills it. An
-invariant suite judges every recorded call; the crucial one condemns a **double-booked map**, and
-its negative control plants a broken overlap function and requires the oracle to catch it.
-`TRANSPONDER_FLIGHT=0` turns recording off.
+Every declaration, conflict and witnessed write is recorded (flight-recorder, extra `flight`,
+`~/.transponder/flight`) so the design's central bet — that agents contain their work when they can
+see each other — can be checked against real runs rather than asserted. `TRANSPONDER_FLIGHT=0` turns
+it off.
 
 ## The off switch
 
-`lock_disable("why")` from any agent session, or `python -m transponder.toggle off` from a terminal.
-Either writes `~/.transponder/DISABLED`, which every hook checks on **every call** — so sessions
-already running go quiet on their next tool use, no restart needed. An information layer cannot
-wedge the machine the way the lock could, but it can be wrong, noisy, or slow, and off must mean
-off. `lock_enable` re-wires the hooks as well as disarming, because *on* has to mean on.
-
-`TRANSPONDER_DISABLED` (env) overrides the file in both directions and is reported by `lock_switch`
-precisely because it wins.
-
-## Honest niche
-
-Claude Code ships worktree isolation for background sessions — the vendor's answer, by not sharing
-the checkout at all. Where worktrees fit, use them. This convention covers what they don't reach:
-interactive sessions deliberately pointed at one checkout, mixed-vendor fleets, and the
-stale-reader drift check. Success still looks like planned obsolescence: harnesses absorb the
-convention, and this repo remains the reference.
+`lock_disable("why")` from an agent, or `python -m transponder.toggle off` from a terminal. Either
+writes `~/.transponder/DISABLED`, which every hook checks on every call, so running sessions go quiet
+on their next tool use. `lock_enable` disarms and re-wires the hooks.
 
 ## Environment
 
-| variable              | meaning                                               |
-|-----------------------|-------------------------------------------------------|
-| `TRANSPONDER_DIR`        | state directory anchor (default `~/.transponder/locks`)  |
-| `TRANSPONDER_FLIGHT`     | recording; **on** unless set to `0`/`false`/`off`     |
-| `TRANSPONDER_FLIGHT_DIR` | where recordings land (default `~/.transponder/flight`)  |
-| `TRANSPONDER_DISABLED`   | the off switch; also `~/.transponder/DISABLED` (above)   |
+| variable                 | meaning                                                    |
+|--------------------------|------------------------------------------------------------|
+| `TRANSPONDER_DIR`        | state directory anchor (default `~/.transponder/locks`)    |
+| `TRANSPONDER_FLIGHT`     | recording; on unless set to `0`/`false`/`off`              |
+| `TRANSPONDER_FLIGHT_DIR` | where recordings land (default `~/.transponder/flight`)    |
+| `TRANSPONDER_DISABLED`   | the off switch; also `~/.transponder/DISABLED`             |
+
+## Scope
+
+One machine, one filesystem — not a network protocol, and not enforcement (a process that ignores
+the convention writes freely). Where a harness can give each agent its own worktree, that is better;
+this covers what worktrees don't: sessions deliberately pointed at one checkout, mixed-vendor
+fleets, and the stale-reader drift check.
