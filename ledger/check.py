@@ -6,16 +6,16 @@ That is the whole difference between a caveat and a gate: prose cannot fire.
 
     uv run python -m ledger.check
 
-`bom` is the substrate this is authored against. It is PRIVATE, and deliberately not a dependency of
+`quern` is the substrate this is authored against. It is PRIVATE, and deliberately not a dependency of
 this package — repolock is public and its adopters must not need it — so the check runs only where
-someone has put it on the path (`uv pip install -e ../bom`). The test suite's structural rules
+someone has put it on the path (`uv pip install -e ../quern`). The test suite's structural rules
 `importorskip` past its absence; this module does not, because a check that silently passes when it
 could not run is worse than one that is missing.
 
 **Nothing runs this today, and that is the honest state of it.** The docstring above used to open
 with "This is the brake", and it named a `--group ledger` that has never existed in pyproject.toml
 — so the command as written could not run at all. CI runs `pytest` and nothing else, and it cannot
-run this: `bom` is private and a public runner cannot install it. A gate wired into no pipeline
+run this: `quern` is private and a public runner cannot install it. A gate wired into no pipeline
 brakes nothing. Until that is resolved, this is a thing a human runs on a machine that has the
 substrate, and it should not be described as if it stops a release.
 
@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import sys
 
-from bom.tree import run_rules
+from quern.tree import run_rules
 
 from ledger import LEDGER
 

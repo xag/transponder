@@ -10,10 +10,10 @@
 # thing is being carried and has not been paid for. That should stop a RELEASE and it should not
 # stop a day's work, so it hangs off the tag and leaves ci.yml alone.
 #
-# IT CANNOT RUN YET, AND IT SAYS SO RATHER THAN PRETENDING. The ledger is authored against `bom`,
+# IT CANNOT RUN YET, AND IT SAYS SO RATHER THAN PRETENDING. The ledger is authored against `quern`,
 # which is private, and this repository is public — so the gate cannot be given a token to reach it
 # without putting a key to private repos inside a public one. No secret is used here on purpose.
-# The gate therefore fails until bom is public: see xag/repolock#13.
+# The gate therefore fails until quern is public: see xag/repolock#13.
 #
 # Failing is the correct behaviour and not a placeholder. A gate that SKIPS when it cannot look
 # reports a green tick that means "I did not check", which is worse than a red one that means
@@ -37,19 +37,19 @@ jobs:
 
       - run: uv sync --all-extras
 
-      # Public URL, no credentials. While bom is private this clone fails, and the gate fails with
+      # Public URL, no credentials. While quern is private this clone fails, and the gate fails with
       # it — which is the honest state of the gate, not an outage.
       - name: Install the substrate the ledger is authored against
         run: |
-          if ! uv pip install "bom @ git+https://github.com/xag/bom"; then
-            echo "::error::Cannot install bom, so the ledger gate cannot run — see xag/repolock#13."
+          if ! uv pip install "quern @ git+https://github.com/xag/quern"; then
+            echo "::error::Cannot install quern, so the ledger gate cannot run — see xag/repolock#13."
             echo "The gate is FAILING, not skipping: a gate that passes when it could not look is"
-            echo "not a gate. This clears when bom is public. Until then, run the gate on a machine"
+            echo "not a gate. This clears when quern is public. Until then, run the gate on a machine"
             echo "that has the substrate:  uv run python -m ledger.check"
             exit 1
           fi
 
-      # bom is installed on top of the synced env, so `uv run` must NOT re-sync afterwards: a sync
-      # is exact, and it would prune bom straight back out again as an extraneous package.
+      # quern is installed on top of the synced env, so `uv run` must NOT re-sync afterwards: a sync
+      # is exact, and it would prune quern straight back out again as an extraneous package.
       - name: Run the gate
         run: uv run --no-sync python -m ledger.check

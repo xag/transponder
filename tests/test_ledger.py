@@ -12,7 +12,7 @@ exits 1 while the gate is red so a pipeline stops. Asserting it green here would
 ways out the day a debt is taken on: lie in the ledger, or leave the suite permanently red. Both end
 with the gate quietly becoming a caveat again, which is the failure this ledger exists to prevent.
 
-Skips where `bom` (private) is not installed — CI and outside contributors lose nothing but this
+Skips where `quern` (private) is not installed — CI and outside contributors lose nothing but this
 audit; machines with the substrate run it.
 """
 
@@ -21,14 +21,14 @@ import sys
 
 import pytest
 
-pytest.importorskip("bom")
+pytest.importorskip("quern")
 
 GATE_RULE = "nothing-unsound-passes-a-gate"
 
 
 def _results():
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-    from bom.tree import run_rules
+    from quern.tree import run_rules
 
     from ledger import LEDGER
 
@@ -37,7 +37,7 @@ def _results():
 
 def test_the_ledger_is_well_formed():
     """No decision without a rejected alternative, no hypothesis without a falsification, no debt
-    without a discharge. The vocabulary is pinned from `bom.ledger`, so these are its rules and not
+    without a discharge. The vocabulary is pinned from `quern.ledger`, so these are its rules and not
     a local restatement of them — the local restatement is what left a known hole nowhere to live
     but a fake hypothesis."""
     results = _results()

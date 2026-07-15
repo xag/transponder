@@ -15,14 +15,14 @@ somebody their work.
 That is not a hypothesis. A hypothesis is a belief whose outcome is genuinely unknown, killed by an
 observation that costs nothing to make. A hole you have already proved reachable is a **debt**, and
 a debt whose only kill-criterion is the damage it causes is not being carried — it is being hidden.
-`bom.ledger` models this correctly and always did: `debt` (known-unsound, carried on purpose),
+`quern.ledger` models this correctly and always did: `debt` (known-unsound, carried on purpose),
 `discharge` (what clears it, and who is competent to), and `gate` (the point past which unsound
 things must not travel, with `nothing-unsound-passes-a-gate` to enforce it). Re-authoring a poorer
 copy of that vocabulary is what left the lie somewhere to live. So: pin the package, do not restate
 it. (The hole itself is now closed in code — see `hold-the-lock-through-the-unknown`.)
 
-Authored against `bom`, which is a private library: it is NOT a dependency of this public package.
-The ledger check skips where bom is not installed, and runs on machines that have it.
+Authored against `quern`, which is a private library: it is NOT a dependency of this public package.
+The ledger check skips where quern is not installed, and runs on machines that have it.
 """
 
 from __future__ import annotations
@@ -30,9 +30,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import bom.grounding  # noqa: F401 -- the natives; the package itself arrives by pin
-from bom import Bom, Node, Quantity
-from bom.library import consume
+import quern.grounding  # noqa: F401 -- the natives; the package itself arrives by pin
+from quern import Quern, Node, Quantity
+from quern.library import consume
 
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -940,7 +940,7 @@ GATE = Node(
 )
 
 
-def build() -> Bom:
+def build() -> Quern:
     """The ledger, with ledger@0.1.0's semantics staged beneath it.
 
     The vocabulary is PINNED, not restated. An earlier version of this file authored its own kinds
@@ -948,18 +948,18 @@ def build() -> Bom:
     and was filed as a hypothesis instead, with a falsifier that would only fire once it had cost
     someone their work. The package that models this properly already existed.
     """
-    # The channel of bom#19 landed and this function lost its tempdir, as promised. This
-    # repo is public and bom's registry is not, so the synced cache (.bom/library) is
+    # The channel of quern#19 landed and this function lost its tempdir, as promised. This
+    # repo is public and quern's registry is not, so the synced cache (.quern/library) is
     # COMMITTED, not ignored: the package travels as data in the repo itself, verified
-    # against bom.lock's digests at every load, and the check still simply skips where
-    # bom (the Python) is not installed. A registry, when reachable, only refreshes it.
-    lib, refs = consume(_ROOT, os.environ.get("BOM_REGISTRY", _ROOT.parent / "bom-registry"))
+    # against quern.lock's digests at every load, and the check still simply skips where
+    # quern (the Python) is not installed. A registry, when reachable, only refreshes it.
+    lib, refs = consume(_ROOT, os.environ.get("QUERN_REGISTRY", _ROOT.parent / "quern-registry"))
 
-    bom = Bom(packages=[next(r for r in refs if r.name == "ledger")])
-    bom = lib.effective(bom)
+    quern = Quern(packages=[next(r for r in refs if r.name == "ledger")])
+    quern = lib.effective(quern)
 
-    bom.root.children = [*DECISIONS, *HYPOTHESES, *DEBTS, GATE]
-    return bom
+    quern.root.children = [*DECISIONS, *HYPOTHESES, *DEBTS, GATE]
+    return quern
 
 
 LEDGER = build()
