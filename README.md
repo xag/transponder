@@ -97,8 +97,14 @@ so it stays honest when a session calls `lock_disable` behind your back.
 
 ```bash
 uv sync --extra tray
-pythonw -m transponder.tray    # headless; a second launch bows out instead of stacking icons
+.venv/Scripts/transponder-tray.exe    # headless; a second launch bows out instead of stacking icons
 ```
+
+Launch it through that entry point, not `pythonw -m transponder.tray`: a uv venv's `pythonw.exe`
+is a console-subsystem trampoline, so `-m` gives the tray a console window — and closing that
+window kills the icon. `transponder-tray.exe` is a `gui-scripts` entry point, so it is windowless.
+For autostart, put a shortcut to it in `shell:startup`. Windows 11 files new tray icons in the
+hidden overflow: promote it once by dragging it onto the taskbar.
 
 ## Environment
 

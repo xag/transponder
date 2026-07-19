@@ -9,6 +9,12 @@ requires-python = ">=3.11"
 # adoption blocker. Everything heavier is an extra.
 dependencies = []
 
+# A GUI entry point, so the launcher is a windowless trampoline at a stable path
+# (.venv/Scripts/transponder-tray.exe). The venv's own pythonw.exe is console-subsystem,
+# which gives the tray a console window; closing it kills the icon.
+[project.gui-scripts]
+transponder-tray = "transponder.tray:main"
+
 [project.optional-dependencies]
 mcp = ["mcp[cli]>=1.2"]
 flight = ["flight-recorder @ git+https://github.com/xag/flight-recorder"]
