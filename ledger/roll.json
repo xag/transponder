@@ -1,0 +1,302 @@
+[
+  {
+    "path": "a-refusal-must-be-actionable",
+    "kind": "decision"
+  },
+  {
+    "path": "a-refusal-must-be-actionable/alt-just-a-shorter-lease",
+    "kind": "alternative"
+  },
+  {
+    "path": "a-refusal-must-be-actionable/alt-let-them-sleep",
+    "kind": "alternative"
+  },
+  {
+    "path": "client-consumes-via-config",
+    "kind": "decision"
+  },
+  {
+    "path": "client-consumes-via-config/alt-lib-import",
+    "kind": "alternative"
+  },
+  {
+    "path": "core-zero-deps",
+    "kind": "decision"
+  },
+  {
+    "path": "core-zero-deps/alt-hard-dep",
+    "kind": "alternative"
+  },
+  {
+    "path": "cursor-settles-late",
+    "kind": "debt"
+  },
+  {
+    "path": "cursor-settles-late/verify-cursors-post-event",
+    "kind": "discharge"
+  },
+  {
+    "path": "filesystem-is-the-namespace",
+    "kind": "decision"
+  },
+  {
+    "path": "filesystem-is-the-namespace/alt-freeform-with-registry",
+    "kind": "alternative"
+  },
+  {
+    "path": "filesystem-is-the-namespace/alt-per-namespace-overlap",
+    "kind": "alternative"
+  },
+  {
+    "path": "filesystem-is-the-namespace/alt-ports-and-services",
+    "kind": "alternative"
+  },
+  {
+    "path": "hold-the-lock-through-the-unknown",
+    "kind": "decision"
+  },
+  {
+    "path": "hold-the-lock-through-the-unknown/alt-block-dirty-holders-only",
+    "kind": "alternative"
+  },
+  {
+    "path": "hold-the-lock-through-the-unknown/alt-optimistic-detect-after",
+    "kind": "alternative"
+  },
+  {
+    "path": "hyp-readers-not-starved",
+    "kind": "hypothesis"
+  },
+  {
+    "path": "hyp-readers-not-starved/kill-readers-starved",
+    "kind": "falsification"
+  },
+  {
+    "path": "hyp-renewal-on-activity",
+    "kind": "hypothesis"
+  },
+  {
+    "path": "hyp-renewal-on-activity/kill-renewal",
+    "kind": "falsification"
+  },
+  {
+    "path": "hyp-serialising-shells-does-not-starve",
+    "kind": "hypothesis"
+  },
+  {
+    "path": "hyp-serialising-shells-does-not-starve/kill-refused-by-a-holder-who-went-home",
+    "kind": "falsification"
+  },
+  {
+    "path": "hyp-serialising-shells-does-not-starve/kill-shell-starvation",
+    "kind": "falsification"
+  },
+  {
+    "path": "hyp-subagents-share-the-session-id",
+    "kind": "hypothesis"
+  },
+  {
+    "path": "hyp-subagents-share-the-session-id/kill-subagent-has-own-id",
+    "kind": "falsification"
+  },
+  {
+    "path": "hyp-the-dirty-handback-can-be-refused",
+    "kind": "hypothesis"
+  },
+  {
+    "path": "hyp-the-dirty-handback-can-be-refused/kill-the-model-will-not-clean-up",
+    "kind": "falsification"
+  },
+  {
+    "path": "hyp-the-fingerprint-sees-every-write",
+    "kind": "hypothesis"
+  },
+  {
+    "path": "hyp-the-fingerprint-sees-every-write/kill-fingerprint-blind",
+    "kind": "falsification"
+  },
+  {
+    "path": "information-not-exclusion",
+    "kind": "decision"
+  },
+  {
+    "path": "information-not-exclusion/alt-demote-stop-ask-to-a-note",
+    "kind": "alternative"
+  },
+  {
+    "path": "information-not-exclusion/alt-gate-only-declared-writes",
+    "kind": "alternative"
+  },
+  {
+    "path": "information-not-exclusion/alt-keep-v1-as-degenerate-case",
+    "kind": "alternative"
+  },
+  {
+    "path": "liveness-lease-and-pid",
+    "kind": "decision"
+  },
+  {
+    "path": "liveness-lease-and-pid/alt-lease-only",
+    "kind": "alternative"
+  },
+  {
+    "path": "liveness-lease-and-pid/alt-pid-only",
+    "kind": "alternative"
+  },
+  {
+    "path": "lockdir-outside-repo",
+    "kind": "decision"
+  },
+  {
+    "path": "lockdir-outside-repo/alt-inrepo",
+    "kind": "alternative"
+  },
+  {
+    "path": "mcp-is-watched-never-gated",
+    "kind": "decision"
+  },
+  {
+    "path": "mcp-is-watched-never-gated/alt-document-the-boundary-only",
+    "kind": "alternative"
+  },
+  {
+    "path": "mcp-is-watched-never-gated/alt-gate-mcp-like-a-shell",
+    "kind": "alternative"
+  },
+  {
+    "path": "mcp-is-watched-never-gated/alt-matcher-lists-writing-mcp-tools",
+    "kind": "alternative"
+  },
+  {
+    "path": "mcp-writes-settle-late",
+    "kind": "debt"
+  },
+  {
+    "path": "mcp-writes-settle-late/gate-mcp-on-a-declared-target",
+    "kind": "discharge"
+  },
+  {
+    "path": "mcp-writes-settle-late/scope-declared-by-the-agent",
+    "kind": "discharge"
+  },
+  {
+    "path": "observe-do-not-predict",
+    "kind": "decision"
+  },
+  {
+    "path": "observe-do-not-predict/alt-drift-only",
+    "kind": "alternative"
+  },
+  {
+    "path": "observe-do-not-predict/alt-quoting-aware-parser",
+    "kind": "alternative"
+  },
+  {
+    "path": "observe-do-not-predict/alt-widen-the-lists",
+    "kind": "alternative"
+  },
+  {
+    "path": "protocol-not-process",
+    "kind": "decision"
+  },
+  {
+    "path": "protocol-not-process/alt-daemon",
+    "kind": "alternative"
+  },
+  {
+    "path": "protocol-not-process/alt-mcp-only",
+    "kind": "alternative"
+  },
+  {
+    "path": "refuse-the-dirty-handback",
+    "kind": "decision"
+  },
+  {
+    "path": "refuse-the-dirty-handback/alt-idle-blocks-writes-observes-shells",
+    "kind": "alternative"
+  },
+  {
+    "path": "refuse-the-dirty-handback/alt-short-idle-lease",
+    "kind": "alternative"
+  },
+  {
+    "path": "refuse-the-dirty-handback/alt-untracked-dirt-releases",
+    "kind": "alternative"
+  },
+  {
+    "path": "release",
+    "kind": "gate"
+  },
+  {
+    "path": "the-background-task-cannot-be-observed",
+    "kind": "decision"
+  },
+  {
+    "path": "the-background-task-cannot-be-observed/alt-settle-background-anyway",
+    "kind": "alternative"
+  },
+  {
+    "path": "the-background-task-cannot-be-observed/alt-wait-for-the-task-to-exit",
+    "kind": "alternative"
+  },
+  {
+    "path": "the-off-switch-cannot-need-a-shell",
+    "kind": "decision"
+  },
+  {
+    "path": "the-off-switch-cannot-need-a-shell/alt-env-var-only",
+    "kind": "alternative"
+  },
+  {
+    "path": "the-off-switch-cannot-need-a-shell/alt-uninstall-the-hooks",
+    "kind": "alternative"
+  },
+  {
+    "path": "the-ticket-must-survive-the-shell",
+    "kind": "decision"
+  },
+  {
+    "path": "the-ticket-must-survive-the-shell/alt-one-string-for-all-shells",
+    "kind": "alternative"
+  },
+  {
+    "path": "the-ticket-must-survive-the-shell/alt-ship-a-launcher-script",
+    "kind": "alternative"
+  },
+  {
+    "path": "tray-is-a-face-not-an-authority",
+    "kind": "decision"
+  },
+  {
+    "path": "tray-is-a-face-not-an-authority/alt-shell-shortcut",
+    "kind": "alternative"
+  },
+  {
+    "path": "tray-is-a-face-not-an-authority/alt-tray-own-flag",
+    "kind": "alternative"
+  },
+  {
+    "path": "waiting-is-a-subscription",
+    "kind": "decision"
+  },
+  {
+    "path": "waiting-is-a-subscription/alt-blocking-wait-only",
+    "kind": "alternative"
+  },
+  {
+    "path": "waiting-is-a-subscription/alt-exempt-all-background",
+    "kind": "alternative"
+  },
+  {
+    "path": "write-detection-names-the-write",
+    "kind": "decision"
+  },
+  {
+    "path": "write-detection-names-the-write/alt-lock-every-shell",
+    "kind": "alternative"
+  },
+  {
+    "path": "write-detection-names-the-write/alt-readers-allowlist",
+    "kind": "alternative"
+  }
+]

@@ -10,20 +10,27 @@
 # thing is being carried and has not been paid for. That should stop a RELEASE and it should not
 # stop a day's work, so it hangs off the tag and leaves ci.yml alone.
 #
-# IT CANNOT RUN YET, AND IT SAYS SO RATHER THAN PRETENDING. The ledger is authored against `quern`,
-# which is private, and this repository is public — so the gate cannot be given a token to reach it
-# without putting a key to private repos inside a public one. No secret is used here on purpose.
-# The gate therefore fails until quern is public: see xag/repolock#13.
+# IT CAN RUN NOW. This block used to say the opposite: the ledger is authored against `quern`,
+# which was private while this repository is public, so the gate could not be given a token to
+# reach it without putting a key to private repos inside a public one. It failed on purpose, and
+# said so, rather than skipping — because a gate that SKIPS when it cannot look reports a green
+# tick meaning "I did not check", which is worse than a red one meaning "something is unpaid".
 #
-# Failing is the correct behaviour and not a placeholder. A gate that SKIPS when it cannot look
-# reports a green tick that means "I did not check", which is worse than a red one that means
-# "something is unpaid" — that is the exact failure ledger/check.py refuses to have, so this
-# workflow does not have it either.
+# quern is public (github.com/xag/quern), so the condition xag/repolock#13 named is discharged and
+# the clone below needs no credential. The refusal-to-skip stays: if the install fails for any
+# other reason, this still fails rather than passing blind.
+#
+# It also now runs on every ledger change, not only on a tag. The roll comparison added in
+# ledger@0.2.0 is INDUCTIVE — each commit checked against its parent — and checking only at
+# release breaks the induction: a deletion in one commit and an unrelated re-addition in the next
+# cancel out in the aggregate diff, and the erasure passes cleanly.
 name: release-gate
 
 on:
   push:
     tags: ["v*"]
+    branches: [main]
+  pull_request:
   workflow_dispatch:          # so the gate can be read at any time, not only at a release
 
 jobs:
@@ -31,25 +38,42 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0      # the check reads a roll out of history; give it history
+
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.13"
 
       - run: uv sync --all-extras
 
-      # Public URL, no credentials. While quern is private this clone fails, and the gate fails with
-      # it — which is the honest state of the gate, not an outage.
+      # Public URL, no credentials — quern is public now, so this resolves.
       - name: Install the substrate the ledger is authored against
         run: |
           if ! uv pip install "quern @ git+https://github.com/xag/quern"; then
-            echo "::error::Cannot install quern, so the ledger gate cannot run — see xag/repolock#13."
+            echo "::error::Cannot install quern, so the ledger gate cannot run."
             echo "The gate is FAILING, not skipping: a gate that passes when it could not look is"
-            echo "not a gate. This clears when quern is public. Until then, run the gate on a machine"
-            echo "that has the substrate:  uv run python -m ledger.check"
+            echo "not a gate. Run it on a machine that has the substrate to see what it says:"
+            echo "  uv run python -m ledger.check"
             exit 1
+          fi
+
+      - name: Fetch the registry the lock pins against
+        run: git clone --depth 1 https://github.com/xag/quern-registry "$RUNNER_TEMP/registry"
+
+      # In CI the commit under judgement IS HEAD and carries the roll written beside it, so
+      # comparing against HEAD compares the tree with itself and passes whatever it is handed.
+      - name: Name the base revision
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "LEDGER_ROLL_REV=origin/${{ github.base_ref }}" >> "$GITHUB_ENV"
+          else
+            echo "LEDGER_ROLL_REV=HEAD^" >> "$GITHUB_ENV"
           fi
 
       # quern is installed on top of the synced env, so `uv run` must NOT re-sync afterwards: a sync
       # is exact, and it would prune quern straight back out again as an extraneous package.
       - name: Run the gate
+        env:
+          QUERN_REGISTRY: ${{ runner.temp }}/registry
         run: uv run --no-sync python -m ledger.check
