@@ -1,302 +1,377 @@
 [
   {
     "path": "a-refusal-must-be-actionable",
-    "kind": "decision"
+    "kind": "decision",
+    "digest": "e7013b6fbc44"
   },
   {
     "path": "a-refusal-must-be-actionable/alt-just-a-shorter-lease",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "edc786626f7e"
   },
   {
     "path": "a-refusal-must-be-actionable/alt-let-them-sleep",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "fcfca45ed9c1"
   },
   {
     "path": "client-consumes-via-config",
-    "kind": "decision"
+    "kind": "decision",
+    "digest": "a1943a649658"
   },
   {
     "path": "client-consumes-via-config/alt-lib-import",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "216dcc7c3423"
   },
   {
     "path": "core-zero-deps",
-    "kind": "decision"
+    "kind": "decision",
+    "digest": "767f7289bbeb"
   },
   {
     "path": "core-zero-deps/alt-hard-dep",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "45a7191c9e9a"
   },
   {
     "path": "cursor-settles-late",
-    "kind": "debt"
+    "kind": "debt",
+    "digest": "cdd5bf4f58a5"
   },
   {
     "path": "cursor-settles-late/verify-cursors-post-event",
-    "kind": "discharge"
+    "kind": "discharge",
+    "digest": "7c4b0d339d25"
   },
   {
     "path": "filesystem-is-the-namespace",
-    "kind": "decision"
+    "kind": "decision",
+    "digest": "16934fb01d44"
   },
   {
     "path": "filesystem-is-the-namespace/alt-freeform-with-registry",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "df9811808343"
   },
   {
     "path": "filesystem-is-the-namespace/alt-per-namespace-overlap",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "91aa19f6244d"
   },
   {
     "path": "filesystem-is-the-namespace/alt-ports-and-services",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "dc13797850e9"
   },
   {
     "path": "hold-the-lock-through-the-unknown",
-    "kind": "decision"
+    "kind": "decision",
+    "digest": "4b86385b85c7"
   },
   {
     "path": "hold-the-lock-through-the-unknown/alt-block-dirty-holders-only",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "ea1c9040f1b9"
   },
   {
     "path": "hold-the-lock-through-the-unknown/alt-optimistic-detect-after",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "91f48162dd38"
   },
   {
     "path": "hyp-readers-not-starved",
-    "kind": "hypothesis"
+    "kind": "hypothesis",
+    "digest": "177479be0309"
   },
   {
     "path": "hyp-readers-not-starved/kill-readers-starved",
-    "kind": "falsification"
+    "kind": "falsification",
+    "digest": "80c1cb7b1871"
   },
   {
     "path": "hyp-renewal-on-activity",
-    "kind": "hypothesis"
+    "kind": "hypothesis",
+    "digest": "ca203582ba8a"
   },
   {
     "path": "hyp-renewal-on-activity/kill-renewal",
-    "kind": "falsification"
+    "kind": "falsification",
+    "digest": "19a3882ce698"
   },
   {
     "path": "hyp-serialising-shells-does-not-starve",
-    "kind": "hypothesis"
+    "kind": "hypothesis",
+    "digest": "cbce7c7fcbf3"
   },
   {
     "path": "hyp-serialising-shells-does-not-starve/kill-refused-by-a-holder-who-went-home",
-    "kind": "falsification"
+    "kind": "falsification",
+    "digest": "ae7682aa3e25"
   },
   {
     "path": "hyp-serialising-shells-does-not-starve/kill-shell-starvation",
-    "kind": "falsification"
+    "kind": "falsification",
+    "digest": "5e6a497832ab"
   },
   {
     "path": "hyp-subagents-share-the-session-id",
-    "kind": "hypothesis"
+    "kind": "hypothesis",
+    "digest": "9cae5db099e9"
   },
   {
     "path": "hyp-subagents-share-the-session-id/kill-subagent-has-own-id",
-    "kind": "falsification"
+    "kind": "falsification",
+    "digest": "9efd89c78242"
   },
   {
     "path": "hyp-the-dirty-handback-can-be-refused",
-    "kind": "hypothesis"
+    "kind": "hypothesis",
+    "digest": "2f3e2a968660"
   },
   {
     "path": "hyp-the-dirty-handback-can-be-refused/kill-the-model-will-not-clean-up",
-    "kind": "falsification"
+    "kind": "falsification",
+    "digest": "47d96c7e5619"
   },
   {
     "path": "hyp-the-fingerprint-sees-every-write",
-    "kind": "hypothesis"
+    "kind": "hypothesis",
+    "digest": "ef9a27cd122a"
   },
   {
     "path": "hyp-the-fingerprint-sees-every-write/kill-fingerprint-blind",
-    "kind": "falsification"
+    "kind": "falsification",
+    "digest": "f89b64156356"
   },
   {
     "path": "information-not-exclusion",
-    "kind": "decision"
+    "kind": "decision",
+    "digest": "0a9c13e87bfa"
   },
   {
     "path": "information-not-exclusion/alt-demote-stop-ask-to-a-note",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "aaea6447fd72"
   },
   {
     "path": "information-not-exclusion/alt-gate-only-declared-writes",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "cd13e999104e"
   },
   {
     "path": "information-not-exclusion/alt-keep-v1-as-degenerate-case",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "6c5a567882c3"
   },
   {
     "path": "liveness-lease-and-pid",
-    "kind": "decision"
+    "kind": "decision",
+    "digest": "3bcbb0f28d93"
   },
   {
     "path": "liveness-lease-and-pid/alt-lease-only",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "49e3f30f03ed"
   },
   {
     "path": "liveness-lease-and-pid/alt-pid-only",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "e5f89c8c3330"
   },
   {
     "path": "lockdir-outside-repo",
-    "kind": "decision"
+    "kind": "decision",
+    "digest": "66528fffac4d"
   },
   {
     "path": "lockdir-outside-repo/alt-inrepo",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "123348ac1a53"
   },
   {
     "path": "mcp-is-watched-never-gated",
-    "kind": "decision"
+    "kind": "decision",
+    "digest": "9065f720bcff"
   },
   {
     "path": "mcp-is-watched-never-gated/alt-document-the-boundary-only",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "07d799300d5a"
   },
   {
     "path": "mcp-is-watched-never-gated/alt-gate-mcp-like-a-shell",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "951711ed330f"
   },
   {
     "path": "mcp-is-watched-never-gated/alt-matcher-lists-writing-mcp-tools",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "b64c016cc822"
   },
   {
     "path": "mcp-writes-settle-late",
-    "kind": "debt"
+    "kind": "debt",
+    "digest": "13d0ebbd841b"
   },
   {
     "path": "mcp-writes-settle-late/gate-mcp-on-a-declared-target",
-    "kind": "discharge"
+    "kind": "discharge",
+    "digest": "fed2c7d207ab"
   },
   {
     "path": "mcp-writes-settle-late/scope-declared-by-the-agent",
-    "kind": "discharge"
+    "kind": "discharge",
+    "digest": "b4b92fe8dea7"
   },
   {
     "path": "observe-do-not-predict",
-    "kind": "decision"
+    "kind": "decision",
+    "digest": "64ba1966c79e"
   },
   {
     "path": "observe-do-not-predict/alt-drift-only",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "79eea9349045"
   },
   {
     "path": "observe-do-not-predict/alt-quoting-aware-parser",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "b42718e5d817"
   },
   {
     "path": "observe-do-not-predict/alt-widen-the-lists",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "e2f7c55bab85"
   },
   {
     "path": "protocol-not-process",
-    "kind": "decision"
+    "kind": "decision",
+    "digest": "057a1dce5a0d"
   },
   {
     "path": "protocol-not-process/alt-daemon",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "52cda5ddafbb"
   },
   {
     "path": "protocol-not-process/alt-mcp-only",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "bc328a455b93"
   },
   {
     "path": "refuse-the-dirty-handback",
-    "kind": "decision"
+    "kind": "decision",
+    "digest": "bc52642c40fb"
   },
   {
     "path": "refuse-the-dirty-handback/alt-idle-blocks-writes-observes-shells",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "be46eb7e008e"
   },
   {
     "path": "refuse-the-dirty-handback/alt-short-idle-lease",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "8f705b0222e1"
   },
   {
     "path": "refuse-the-dirty-handback/alt-untracked-dirt-releases",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "f0645ef62f35"
   },
   {
     "path": "release",
-    "kind": "gate"
+    "kind": "gate",
+    "digest": "cccb704f9d72"
   },
   {
     "path": "the-background-task-cannot-be-observed",
-    "kind": "decision"
+    "kind": "decision",
+    "digest": "92cd593002bf"
   },
   {
     "path": "the-background-task-cannot-be-observed/alt-settle-background-anyway",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "0c01f2d03b31"
   },
   {
     "path": "the-background-task-cannot-be-observed/alt-wait-for-the-task-to-exit",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "9ceaf473924d"
   },
   {
     "path": "the-off-switch-cannot-need-a-shell",
-    "kind": "decision"
+    "kind": "decision",
+    "digest": "d290927a3791"
   },
   {
     "path": "the-off-switch-cannot-need-a-shell/alt-env-var-only",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "1de06a237773"
   },
   {
     "path": "the-off-switch-cannot-need-a-shell/alt-uninstall-the-hooks",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "f32ab07fa066"
   },
   {
     "path": "the-ticket-must-survive-the-shell",
-    "kind": "decision"
+    "kind": "decision",
+    "digest": "f4d674862d70"
   },
   {
     "path": "the-ticket-must-survive-the-shell/alt-one-string-for-all-shells",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "2d3d3c8b1e01"
   },
   {
     "path": "the-ticket-must-survive-the-shell/alt-ship-a-launcher-script",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "943f59437c82"
   },
   {
     "path": "tray-is-a-face-not-an-authority",
-    "kind": "decision"
+    "kind": "decision",
+    "digest": "5c91fa02a77e"
   },
   {
     "path": "tray-is-a-face-not-an-authority/alt-shell-shortcut",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "ccd684e84f83"
   },
   {
     "path": "tray-is-a-face-not-an-authority/alt-tray-own-flag",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "38cc2168987e"
   },
   {
     "path": "waiting-is-a-subscription",
-    "kind": "decision"
+    "kind": "decision",
+    "digest": "ffc43c0bc6d8"
   },
   {
     "path": "waiting-is-a-subscription/alt-blocking-wait-only",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "b3e5044de580"
   },
   {
     "path": "waiting-is-a-subscription/alt-exempt-all-background",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "d1c3a3eeadfe"
   },
   {
     "path": "write-detection-names-the-write",
-    "kind": "decision"
+    "kind": "decision",
+    "digest": "77adc073c50c"
   },
   {
     "path": "write-detection-names-the-write/alt-lock-every-shell",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "7847c7d88609"
   },
   {
     "path": "write-detection-names-the-write/alt-readers-allowlist",
-    "kind": "alternative"
+    "kind": "alternative",
+    "digest": "284ea5b3c6e2"
   }
 ]
