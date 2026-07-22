@@ -32,9 +32,32 @@ def run_hook(script, payload):
 
 
 def claude_edit(repo, session, path="a.txt"):
+    """The PreToolUse half of an Edit, on its own — for the checks that are about what the courier
+    says on the way in (or, mostly, does not say)."""
     return run_hook(CLAUDE, {"hook_event_name": "PreToolUse", "tool_name": "Edit",
                              "tool_input": {"file_path": os.path.join(repo, path)},
                              "cwd": repo, "session_id": session})
+
+
+def claude_write(repo, session, path="a.txt", text="edited\n"):
+    """A whole Edit, the way the harness runs one: PreToolUse, THE ACTUAL WRITE, PostToolUse.
+
+    Edit used to be judged before it ran, by a warning the harness could not deliver in time. It is
+    now witnessed like a shell — which means a test that only fires PreToolUse is testing the half
+    where, by design, nothing is said. The write has to really happen or settle() has nothing to
+    see: the whole mechanism is a fingerprint that MOVED.
+    """
+    payload = {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(repo, path)},
+               "cwd": repo, "session_id": session}
+    pre = run_hook(CLAUDE, {**payload, "hook_event_name": "PreToolUse"})
+    assert pre.returncode == 0, f"a PreToolUse refused an Edit: {pre.stderr}"
+    target = os.path.join(repo, path)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    with open(target, "a", encoding="utf-8") as f:
+        f.write(text)
+    post = run_hook(CLAUDE, {**payload, "hook_event_name": "PostToolUse"})
+    post.pre_stdout = pre.stdout
+    return post
 
 
 def claude_shell(repo, session, command, tool="Bash"):
@@ -152,7 +175,7 @@ def test_a_missing_flight_recorder_costs_the_tape_not_the_courier(repo, tmp_path
     res = subprocess.run([sys.executable, CLAUDE], input=json.dumps(payload), env=env_,
                          capture_output=True, text=True)
     assert res.returncode == 0
-    assert "HEADS UP" in res.stdout or "SHARED" in res.stdout, (
+    assert "SHARED" in res.stdout, (
         "with no recorder installed, the courier went quiet entirely")
 
 

@@ -115,13 +115,21 @@ The courier MUST deliver:
 
 1. **the introduction**, once per (session, checkout): who else is working here and where, and how
    to get on the map. Once — a note printed forever is a note nobody reads;
-2. **the heads-up**, when a *declared* write (an Edit/Write tool carries its path) is about to
-   land inside another agent's region — information at its most valuable moment, before the write,
-   and still not a gate;
-3. **the drift note** (§6), when history moved under what the session remembers.
+2. **the drift note** (§6), when history moved under what the session remembers.
 
-A participant writing *unclaimed* ground SHOULD have its claim quietly extended — the map should
-say what participants are actually touching.
+The courier MUST NOT promise a warning *before* a declared write. This spec used to require one —
+"information at its most valuable moment" — and it was built, and that moment does not exist. A
+hook reaches an agent before its tool runs only by refusing the call, which §7 forbids; context
+attached to a pre-tool hook is delivered beside the TOOL RESULT, after the write has landed. A
+declared write is therefore witnessed exactly like a shell (§4), and the wording says so.
+
+What genuinely arrives before a write is not the courier's at all: the `declare_scope` answer,
+which names any conflicting holder synchronously, and the introduction above — both of which reach
+the agent through channels that do put text in front of it.
+
+A participant writing *unclaimed* ground is TOLD, and asked to declare it. Its claim MUST NOT be
+extended on its behalf: a map that grows behind the back of the agent whose name is on it attributes
+to that agent something it never said.
 
 ## 4. The witness
 

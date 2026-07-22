@@ -46,9 +46,10 @@ except ImportError:                               # run straight from a checkout
     from transponder import env
     from transponder.hooks import common
 
-# The tools that declare what they will write — the input carries the path, so the heads-up can
-# fire BEFORE the write. Everything else is observed after the fact, because v1 §7a's proof stands:
-# what a shell will touch is not decidable from its text, and this library no longer guesses.
+# The tools whose input carries the path they will write. That fact no longer buys a warning before
+# the write (the harness cannot deliver one without refusing the call — see common.py where
+# heads_up stood); it buys the right ANSWER to which checkout is being touched, which is not the
+# session's cwd often enough to matter (#8). Everything, these included, is observed after the fact.
 WRITING_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 
 # Our OWN MCP tools, matched on the tool's name rather than its server's (the server can be
@@ -86,12 +87,12 @@ def _say(msg: str) -> None:
     `hookSpecificOutput.additionalContext` is the channel that reaches the model without blocking
     the call, which keeps the one rule this library will not break: nothing is ever refused.
 
-    Its TIMING is not what heads_up() was written for, and that is a real cost, not a footnote.
-    Context from PreToolUse is delivered next to the TOOL RESULT — after the write has landed. No
-    non-blocking pre-execution channel exists in this harness; the only thing that reaches a model
-    before its tool runs is exit 2, which refuses the call. So the pre-write warning is now a
-    prompt after-the-fact report, and whether heads_up() should still exist as a distinct thing is
-    a design question this change deliberately does not settle.
+    Its TIMING is a real cost, not a footnote. Context from PreToolUse is delivered next to the
+    TOOL RESULT — after the write has landed. No non-blocking pre-execution channel exists in this
+    harness; the only thing that reaches a model before its tool runs is exit 2, which refuses the
+    call. The pre-write warning was deleted rather than reworded (see common.py where heads_up
+    stood): every write is now witnessed after the fact, which is what this library could always
+    honestly claim.
     """
     _NOTES.append(msg)
 
@@ -139,20 +140,22 @@ def _target_path(payload: dict) -> str:
     return ti.get("file_path") or ti.get("notebook_path") or ""
 
 
-def _target(payload: dict) -> tuple[str | None, bool]:
-    """(repo, declared_write). For a file-editing tool the repo comes from its own file_path — not
-    from cwd, which is a different repo often enough to matter (#8)."""
+def _target(payload: dict) -> str | None:
+    """The repo this call acts on. For a file-editing tool it comes from the tool's own file_path —
+    not from cwd, which is a different repo often enough to matter (#8). WRITING_TOOLS earns its
+    keep here and nowhere else now: it no longer selects a different KIND of handling, only a better
+    answer to which checkout is being touched."""
     tool = payload.get("tool_name") or ""
     if tool in WRITING_TOOLS:
-        return common.repo_of(_target_path(payload)), True
-    return common.repo_root(payload.get("cwd") or os.getcwd()), False
+        return common.repo_of(_target_path(payload))
+    return common.repo_root(payload.get("cwd") or os.getcwd())
 
 
 def pre_tool_use(payload: dict) -> None:
     tool = payload.get("tool_name") or ""
     if _skipped_mcp(tool):
         return
-    repo, declared_write = _target(payload)
+    repo = _target(payload)
     if not repo:
         return                       # not a git checkout — nothing to witness, nobody to inform
 
@@ -162,10 +165,10 @@ def pre_tool_use(payload: dict) -> None:
     notes = []
     if note := common.shared_note(repo, session):
         notes.append(note)
-    if declared_write:
-        notes += common.heads_up(repo, session, _target_path(payload), _intent(payload))
-    else:
-        notes += common.watch(repo, session)     # the witness's before-picture; never a refusal
+    # Every tool gets the before-picture now, Edit/Write included. They used to be handled here
+    # instead, by a warning the harness could not deliver in time (see common.py where heads_up
+    # stood); without a snapshot taken here, settle() would have nothing to compare against.
+    notes += common.watch(repo, session)         # the witness's before-picture; never a refusal
     for n in notes:
         _say(n)
 
@@ -174,9 +177,9 @@ def post_tool_use(payload: dict) -> None:
     tool = payload.get("tool_name") or ""
     if _skipped_mcp(tool):
         return
-    repo, declared_write = _target(payload)
-    if not repo or declared_write:
-        return                       # a declared write was handled before it ran; nothing to settle
+    repo = _target(payload)
+    if not repo:
+        return                       # not a git checkout — nothing to settle against
 
     _record()
     session = payload.get("session_id") or "unknown"
@@ -224,9 +227,16 @@ HANDLERS = {
 # Matchers per event. Both shells (on Windows PowerShell is the one that runs) and `mcp__.*`, all
 # for the WITNESS — nothing matched here is ever refused. PostToolUse missing = a blind witness,
 # which watch() detects and says out loud rather than letting anyone believe they are covered.
+# PreToolUse and PostToolUse now match the SAME set, and must: every tool that can move the tree
+# needs both halves of the witness, a before-picture and an after. PostToolUse used to omit the
+# writing tools because a declared write was handled by a warning before it ran — that warning is
+# gone (see common.py), so omitting them here would leave Edit and Write observed by nobody, which
+# is the failure watch() shouts about.
+_WATCHED = "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|mcp__.*"
+
 EVENTS = {
-    "PreToolUse": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|mcp__.*",
-    "PostToolUse": "Bash|PowerShell|mcp__.*",
+    "PreToolUse": _WATCHED,
+    "PostToolUse": _WATCHED,
     "Stop": None,
     "SessionStart": None,
 }

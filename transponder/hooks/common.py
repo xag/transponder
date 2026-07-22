@@ -6,10 +6,12 @@ the gate hurt someone (#4, #7, #10, #11). All of that is gone, and it is gone on
 project stopped blocking agents and started informing them. What remains is exactly two jobs:
 
   THE COURIER   tell an agent what it cannot see from inside its own context: who else is working
-                this checkout and where (scope.touching); that the file it is about to edit sits in
-                another agent's declared region (heads_up); that history moved under it (drift_note).
-                Notes ride the hook's stdout into the agent's context on its next tool call — the
-                one channel that reaches a running agent without interrupting it.
+                this checkout and where (shared_note, once); that history moved under it
+                (drift_note). Notes reach the model as `hookSpecificOutput.additionalContext` —
+                NOT as stdout, which goes to a debug log and reached nobody for the whole life of
+                v2. It is the one channel that informs a running agent without refusing its call,
+                and it lands beside the tool result: the courier speaks between calls, never before
+                one. That is why there is no pre-write warning here any more.
 
   THE WITNESS   observe what a tool call actually did (witness.snapshot before, diff after), and
                 when a write lands inside another agent's declared region, say so LOUDLY, to the
@@ -147,39 +149,28 @@ def shared_note(repo: str, session: str) -> str | None:
     return "\n".join(out)
 
 
-def heads_up(repo: str, session: str, path: str, intent: str) -> list[str]:
-    """A declared write (Edit/Write carry their path), checked against the map BEFORE it lands.
-
-    This is information at its most valuable moment — the write has not happened yet — and it is
-    still not a gate: the agent is warned, and proceeds. If it writes anyway, the witness reports
-    the violation as a fact; but almost always the warning is enough, because the failure mode was
-    never malice, it was not knowing the other agent existed.
-
-    For an agent with a declared scope, writing into UNCLAIMED ground quietly extends its claim —
-    the registry should say what participants are actually touching, and that is information too.
-    """
-    target = scope.canon(path)
-    my = scope.scope_of(session)
-    if scope.covers(my, target):
-        scope.renew(session)
-        return []
-
-    for c in scope.touching(repo):
-        if c["session"] != session and scope.covers(c["scope"], target):
-            return [
-                f"HEADS UP — {_rel(repo, path)} is inside agent {c['session']}'s declared region "
-                f"({', '.join(c['scope'])}"
-                + (f" — {c['intent']}" if c.get("intent") else "") + ").",
-                "That is someone's work in progress. Nothing stops you, but if you write it anyway "
-                "it will be witnessed and reported to both of you. Better: negotiate — pick a "
-                "non-overlapping scope, or split the work and file an issue for their part.",
-            ]
-
-    if my:                                      # a participant on unclaimed ground: keep the map true
-        v = scope.declare(repo, session, list(my) + [target], intent)
-        if v["status"] == "granted":
-            return [f"transponder: extended your scope to cover {_rel(repo, path)}."]
-    return []
+# heads_up() stood here: the pre-write warning for Edit/Write, checked against the map BEFORE the
+# write landed. It is deleted, not disabled, because THE MOMENT IT WAS WRITTEN FOR DOES NOT EXIST.
+#
+# A hook cannot put text in front of a Claude Code agent before its tool runs without refusing the
+# call: plain stdout goes to a debug log, and `additionalContext` from PreToolUse is delivered next
+# to the TOOL RESULT — after the write. The only pre-execution channel is exit 2, which blocks, and
+# this library does not block. So the warning arrived after the thing it warned about, wearing the
+# grammar of a warning ("if you write it anyway..."), addressed to an agent that already had.
+#
+# Keeping it would have meant two code paths saying the same thing at the same moment in different
+# words, and a docstring promising a guarantee the harness cannot give. Edit/Write now settle
+# exactly like a shell: observed after, reported as a fact, remedy attached. One path, one moment,
+# one wording — and observe-do-not-predict was always the honest form of this.
+#
+# What genuinely still arrives BEFORE any write is not here and does not need to be: the
+# `declare_scope` conflict answer (an MCP reply, straight into the agent's context) and the
+# shared-checkout intro at UserPromptSubmit/SessionStart, whose stdout the harness does put in
+# front of the model.
+#
+# One behaviour left with it: a participant writing UNCLAIMED ground used to have its claim
+# silently extended. settle() covers that case as a note asking for extend_scope() — the same
+# treatment a shell has always had, and it does not mutate the map behind the agent's back.
 
 
 def _rel(repo: str, path: str) -> str:

@@ -5,9 +5,10 @@ Three claims, in the order they matter:
   1. THE MAP IS COHERENT — a granted region belongs to exactly one agent, overlap is decidable,
      and a conflict names the exact intersection. A double-booked map is worse than no map,
      because it is believed.
-  2. THE COURIER INFORMS AND NEVER REFUSES — a write about to land in someone's region gets a
-     heads-up; an agent walking into a shared checkout gets introduced, once; and every one of
-     those calls proceeds. The failure this project prevents was never malice, it was an agent
+  2. THE COURIER INFORMS AND NEVER REFUSES — an agent walking into a shared checkout gets
+     introduced, once, and every call proceeds. It does NOT warn before a write: that was
+     specified, built, and undeliverable, because a hook reaches an agent ahead of its tool only
+     by refusing the call. The failure this project prevents was never malice, it was an agent
      that did not know another agent was there.
   3. THE WITNESS NAMES WHAT HAPPENED — a write into another agent's region is reported, loudly,
      to the agent that did it, with the remedy attached. It is a fact off the tree, not a guess
@@ -19,7 +20,7 @@ import subprocess
 
 from transponder import scope
 
-from test_adapters import CLAUDE, claude_edit, claude_shell, run_hook
+from test_adapters import CLAUDE, claude_edit, claude_shell, claude_write, run_hook
 
 
 def declare(repo, session, paths, intent="working"):
@@ -97,17 +98,21 @@ def test_a_lapsed_claim_binds_nobody(repo, monkeypatch):
 
 # --- 2. the courier ---------------------------------------------------------------------------------
 
-def test_a_write_into_anothers_region_gets_a_heads_up_and_proceeds(repo):
-    """Information at its most valuable moment — before the write — and still not a gate."""
+def test_a_write_into_anothers_region_is_reported_after_it_lands(repo):
+    """This used to assert a HEADS UP before the write, and that moment turned out not to exist:
+    a hook cannot reach a Claude Code agent before its tool runs without refusing the call. So an
+    Edit is witnessed exactly like a shell — the write succeeds, and the truth follows immediately,
+    with the remedy attached. Nothing is prevented, which was always the honest description."""
     dirs(repo, "api", "web")
     declare(repo, "A", ["api/**"], intent="the rate limiter")
     declare(repo, "B", ["web/**"])
 
-    res = claude_edit(repo, "B", path="api/server.py")      # B about to reach into A's region
+    res = claude_write(repo, "B", path="api/server.py")     # B reaches into A's region
 
     assert res.returncode == 0, "nothing is ever refused"
-    assert "HEADS UP" in res.stdout
+    assert "SCOPE VIOLATION" in res.stdout, "an Edit into another's region went unwitnessed"
     assert "agent A" in res.stdout and "the rate limiter" in res.stdout
+    assert not res.pre_stdout.strip(), "the pre half spoke about a write it could not stop in time"
 
 
 def test_an_agent_walking_into_a_shared_checkout_is_introduced_once(repo):
@@ -126,13 +131,21 @@ def test_an_agent_walking_into_a_shared_checkout_is_introduced_once(repo):
     assert "THIS CHECKOUT IS SHARED" not in second.pre_stdout, "introduced twice — that is spam"
 
 
-def test_a_participant_writing_unclaimed_ground_extends_its_own_claim(repo):
-    """The map should say what participants are actually touching — that is information too."""
+def test_a_participant_writing_unclaimed_ground_is_asked_to_declare_it(repo):
+    """The map should say what participants are actually touching. It used to be made true FOR the
+    agent — the pre-write path silently widened A's claim to cover whatever it was about to edit.
+    That went with heads_up(), and the replacement is the treatment a shell has always had: say so,
+    and ask. Better on its own merits, not merely what was left: a map must not grow behind the
+    back of the agent whose name is on it."""
     dirs(repo, "api")
     declare(repo, "A", ["api/**"])
-    res = claude_edit(repo, "A", path="notes.md")
+
+    res = claude_write(repo, "A", path="notes.md")
+
     assert res.returncode == 0
-    assert scope.covers(scope.scope_of("A"), scope.canon(os.path.join(repo, "notes.md")))
+    assert "extend_scope" in res.stdout, "a stray write was not reported to its own author"
+    assert not scope.covers(scope.scope_of("A"), scope.canon(os.path.join(repo, "notes.md"))), \
+        "the map widened itself without the agent saying so"
 
 
 def test_a_write_inside_your_own_scope_is_silent(repo):
