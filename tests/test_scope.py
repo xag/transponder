@@ -222,20 +222,62 @@ def test_a_session_parked_on_a_question_is_told_on_the_way_back_in(repo):
         "a session coming back from its human was not told its region had been written")
 
 
-def test_an_agent_walking_into_a_shared_checkout_is_introduced_once(repo):
-    """The fact an agent cannot see from inside its own context: who else is here. Delivered at
-    the first moment it matters, not repeated on every call — a note printed forever is a note
-    nobody reads. And the way in is taught: declare, don't wait."""
+def test_a_shell_write_from_a_different_checkout_is_still_witnessed(repo, tmp_path):
+    """The hole that removed the last guess from this library.
+
+    A real agent sat in one checkout and ran `printf >> file` into another. The witness picked the
+    repo to fingerprint from the session's CWD — "the folder you are sitting in is probably the one
+    you are writing to" — snapshotted its own checkout, saw nothing move there, and said nothing
+    while the write landed in somebody's declared region. Same shape as reading a command to guess
+    what it writes (#4, #7); it survived only because it had never been the thing that broke.
+
+    There was nothing to guess: a violation exists only against a claim, so the set worth watching
+    is the set that has been claimed, and the map already knew it."""
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=elsewhere, check=True)
+    (elsewhere / "x.txt").write_text("x\n")
+    subprocess.run(["git", "add", "-A"], cwd=elsewhere, check=True)
+    subprocess.run(["git", "commit", "-qm", "e"], cwd=elsewhere, check=True)
+
+    dirs(repo, "api")
+    declare(repo, "A", ["api/**"], intent="the rate limiter")
+
+    target = os.path.join(repo, "api", "server.py")
+    payload = {"tool_name": "Bash", "tool_input": {"command": f'printf x >> "{target}"'},
+               "cwd": str(elsewhere), "session_id": "B"}      # B is sitting somewhere ELSE
+    assert run_hook(CLAUDE, {**payload, "hook_event_name": "PreToolUse"}).returncode == 0
+    with open(target, "a", encoding="utf-8") as f:
+        f.write("a shell write from another checkout\n")
+    post = run_hook(CLAUDE, {**payload, "hook_event_name": "PostToolUse"})
+
+    assert post.returncode == 0, "nothing is ever refused"
+    assert "SCOPE VIOLATION" in post.stdout, (
+        "a shell write into a declared region went unwitnessed because it came from another cwd")
+    assert "agent A" in post.stdout
+
+
+def test_an_agent_is_introduced_to_the_machine_once(repo):
+    """The fact an agent cannot see from inside its own context: who else is here. Delivered at the
+    first moment it matters, not repeated on every call — a note printed forever is a note nobody
+    reads. And the way in is taught: declare what you will edit, don't wait.
+
+    It introduces the MACHINE, not "this checkout". The old version picked one repo from the
+    session's cwd, so an agent was told about its neighbours only when it happened to be sitting in
+    the same folder — and an agent editing across checkouts, which is the ordinary case for anyone
+    with a lib and its client open, was told nothing at all."""
     dirs(repo, "api")
     declare(repo, "A", ["api/**"], intent="the rate limiter")
 
     first = claude_shell(repo, "B", "cat a.txt")
-    assert "THIS CHECKOUT IS SHARED" in first.pre_stdout
-    assert "declare_scope" in first.pre_stdout, "the intro must teach the way in"
+    assert "NOT THE ONLY AGENT" in first.pre_stdout
     assert "agent A" in first.pre_stdout
+    assert "declare_scope" in first.pre_stdout, "the intro must teach the way in"
+    assert "INTEND TO EDIT" in first.pre_stdout, (
+        "the intro must ask for the files they will WRITE TO — nothing watches an undeclared region")
 
     second = claude_shell(repo, "B", "cat a.txt")
-    assert "THIS CHECKOUT IS SHARED" not in second.pre_stdout, "introduced twice — that is spam"
+    assert "NOT THE ONLY AGENT" not in second.pre_stdout, "introduced twice — that is spam"
 
 
 def test_a_participant_writing_unclaimed_ground_is_asked_to_declare_it(repo):

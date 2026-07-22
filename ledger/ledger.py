@@ -715,6 +715,62 @@ DECISIONS = [
                                   "wrong — see tray-is-a-face-not-an-authority"}),
          ]),
 
+    Node(id="the-map-is-the-watch-list", kind="decision",
+         name="The witness watches the checkouts that were DECLARED — never the folder a session "
+              "happens to be sitting in",
+         payload={"rationale":
+                  "`cwd` was the last guess in the library, and it was invisible because it never "
+                  "looked like one: 'the folder you are sitting in is probably the folder you are "
+                  "writing to'. A real agent broke it within a minute of being asked to try — it "
+                  "sat in the transponder checkout and ran `printf >> file` into a demo checkout. "
+                  "The witness fingerprinted its own cwd, correctly saw nothing move there, and "
+                  "said nothing while the write landed in somebody's declared region. The same "
+                  "agent's Edit, one minute later, was caught perfectly: a writing tool names its "
+                  "file, so that repo was a FACT.\n\n"
+                  "This is observe-do-not-predict with a different hat on, and it survived four "
+                  "rounds of that argument (#4, #7, #8) only because it had never been the thing "
+                  "that broke.\n\n"
+                  "The first fix proposed here was to watch cwd AND every claimed checkout. The "
+                  "user rejected it as hardcoding the instance, and that was right: it keeps the "
+                  "prediction and pays for it on every shell call, fixing the case observed and "
+                  "leaving the mechanism intact for the next one. So the guess is REMOVED. Two "
+                  "sources remain and both are facts: the repo owning a path the harness declared, "
+                  "and the checkouts on the map. A violation exists only against a claim, so the "
+                  "set worth watching is exactly the set somebody declared — and the map already "
+                  "knew it.\n\n"
+                  "GIVEN UP, deliberately: a checkout nobody declared is not watched at all. Drift, "
+                  "the blind-witness warning, the Stop handback and the intro all key on the map "
+                  "now, so a session that declares nothing gets no service. That is the correct "
+                  "incentive and a real narrowing, and it is why the protocol had to be said louder "
+                  "— declare the files and folders you INTEND TO EDIT, in the checkout you write TO. "
+                  "The intro introduces the MACHINE rather than one cwd-chosen checkout, which also "
+                  "cures a case nobody had noticed: an agent working across a lib and its client was "
+                  "told about neither.\n\n"
+                  "KNOWN BOOTSTRAP GAP, stated rather than hidden: the intro fires only when "
+                  "somebody holds a claim. On a machine where no one has ever declared, no one is "
+                  "ever invited to."},
+         children=[
+             Node(id="alt-watch-cwd-and-every-claim", kind="alternative",
+                  name="Keep cwd and ADD the claimed checkouts to the watch set",
+                  payload={"why": "proposed here first, and it hardcodes the instance. It fixes the "
+                                  "write that was observed while leaving the prediction in place, so "
+                                  "the next shape of the same bug is unguarded — and every shell "
+                                  "call pays for both the guess and the map"}),
+             Node(id="alt-parse-the-shell-command", kind="alternative",
+                  name="Scan the Bash command text for the paths it will touch",
+                  payload={"why": "the offending agent's own first suggestion, and it is "
+                                  "alt-quoting-aware-parser returning for a third time. Undecidable, "
+                                  "built and reverted twice; `git log --format='%h -> %s'` is a read "
+                                  "under one shell and a write under another"}),
+             Node(id="alt-tell-agents-to-declare-where-they-write", kind="alternative",
+                  name="Leave the mechanism alone and instruct agents to declare the checkout they "
+                       "write to",
+                  payload={"why": "kept, and done — but it cannot be the fix. It reaches only agents "
+                                  "that declare, and the agent that walks into someone's region "
+                                  "without declaring is by definition the one not listening. An "
+                                  "instruction is not a witness"}),
+         ]),
+
     Node(id="the-courier-speaks-where-it-can-be-heard", kind="decision",
          name="Notes go out as hookSpecificOutput.additionalContext — and a channel is verified at "
               "the RECEIVING end or not at all",

@@ -153,6 +153,59 @@ def touching(root: str) -> list[dict]:
     return [c for c in live() if any(overlaps(tree, r) for r in c["scope"])]
 
 
+def in_play(session: str = "") -> list[str]:
+    """The checkouts the witness watches: every one that somebody has DECLARED. With `session`, only
+    that agent's own.
+
+    This replaces the last guess in the library. The adapter used to pick the repo to fingerprint
+    from the session's `cwd` — "the folder you are sitting in is probably the one you are writing
+    to" — which is a prediction, and it was wrong the first time a real agent ran `printf >> file`
+    from one checkout into another: the witness snapshotted the wrong tree, saw nothing move, and
+    said nothing. Same class as reading a command to guess what it writes (#4, #7), and it survived
+    only because it had never been the thing that broke.
+
+    There is nothing to guess. A violation is only ever relative to a claim, so the set worth
+    watching is exactly the set that has been claimed — and the map already knows it. An unclaimed
+    checkout is not watched, which costs nothing that was ever protected: nobody declared anything
+    there, so there is no region to land in.
+
+    The claims answer this directly (`repo`, recorded at declare); a claim written before that field
+    existed falls back to the prefix of its first resource, so an old claim on disk still counts.
+    """
+    out = set()
+    for c in live():
+        if session and c["session"] != session:
+            continue
+        if repo := c.get("repo"):
+            out.add(repo)
+        elif c.get("scope"):
+            if root := _checkout_of(sorted(c["scope"])[0]):
+                out.add(root)
+    return sorted(out)
+
+
+def _checkout_of(resource: str) -> str | None:
+    """Walk up from a claimed path to the checkout that contains it — for claims written before the
+    anchor was recorded, which are on disk right now and must not fall off the map on upgrade.
+
+    It walks rather than taking the resource's own prefix: a subtree claim is usually a directory
+    INSIDE the checkout (`repo/api/**`), and a file claim has no prefix at all, so the obvious
+    reading gives a path that is not a repo and would be fingerprinted as if it were one. `.git` is
+    tested as file OR directory — a worktree and a submodule spell it as a file.
+    """
+    d = resource[:-3] if resource.endswith("/**") else resource
+    if not os.path.isdir(d):
+        d = os.path.dirname(d)
+    while d:
+        if os.path.exists(os.path.join(d, ".git")):
+            return env.canonical(d)
+        parent = os.path.dirname(d)
+        if parent == d:
+            return None
+        d = parent
+    return None
+
+
 def mine(session: str) -> dict | None:
     return next((c for c in live() if c["session"] == session), None)
 
@@ -170,9 +223,9 @@ def scope_of(session: str) -> list[str]:
 
 
 def _write(session: str, scope: list[str], intent: str, now: float,
-           acquired_at: float | None = None) -> dict:
+           acquired_at: float | None = None, repo: str = "") -> dict:
     claim = {
-        "session": session, "scope": sorted(set(scope)), "intent": intent,
+        "session": session, "scope": sorted(set(scope)), "intent": intent, "repo": repo,
         "acquired_at": acquired_at or now, "renewed_at": now,
         "expires_at": now + LEASE_SECONDS, "lease_seconds": LEASE_SECONDS,
     }
@@ -212,7 +265,8 @@ def declare(anchor: str, session: str, resources: list[str], intent: str = "") -
                 "free_hint": _free_hint(anchor, others)}
 
     was = mine(session)
-    claim = _write(session, scope, intent, now, acquired_at=was["acquired_at"] if was else None)
+    claim = _write(session, scope, intent, now, acquired_at=was["acquired_at"] if was else None,
+                   repo=env.canonical(anchor))
     return {"status": "granted", "claim": claim}
 
 
@@ -275,7 +329,7 @@ def renew(session: str) -> None:
     claim = mine(session)
     if claim:
         _write(session, claim["scope"], claim.get("intent", ""), env.now(),
-               claim["acquired_at"])
+               claim["acquired_at"], repo=claim.get("repo", ""))
 
 
 def _free_hint(anchor: str, others: list[dict]) -> list[str]:

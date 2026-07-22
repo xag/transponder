@@ -48,7 +48,7 @@ def test_the_switch_silences_a_session_that_is_already_running(switchable):
 
     noisy = _edit(repo, "B", path="api/x.py")               # B walks into A's region
     assert noisy.returncode == 0, "nothing is ever refused"
-    assert "HEADS UP" in noisy.stdout or "SHARED" in noisy.stdout, "the courier should speak here"
+    assert "NOT THE ONLY AGENT" in noisy.stdout, "the courier should speak here"
 
     toggle.disable(reason="too noisy, switching off")
 

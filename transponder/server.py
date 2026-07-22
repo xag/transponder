@@ -47,8 +47,17 @@ def _fmt_scopes(repo: str) -> str:
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=True))
 def declare_scope(repo: str, scope: list[str], session_id: str, intent: str = "") -> str:
-    """**Say where you will write, so other agents working this checkout can stay out of your way
-    — and you out of theirs.**
+    """**Declare the files and folders you intend to EDIT, before you edit them.**
+
+    `repo` is the checkout you will WRITE TO — not the one you are sitting in. They are the same
+    most of the time and they are not the same when it matters: a lib and its client, a tool and the
+    project it is being run against. Declare once per checkout you will touch; nothing stops you
+    holding regions in two.
+
+    THE MAP IS THE WATCH LIST. Nothing observes a region nobody declared — a write there is neither
+    reported to you nor to anyone else, because a violation only exists against a claim. Declaring
+    is not paperwork you do for other agents' benefit; it is how your own work becomes something the
+    witness can see being trampled.
 
     Nothing is enforced and nothing is blocked: the map is information, the witness reports what
     actually happens against it, and the agents — who all work for the same human — keep out of

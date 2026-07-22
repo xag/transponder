@@ -420,6 +420,26 @@
     "digest": "7395b454c2aa"
   },
   {
+    "path": "the-map-is-the-watch-list",
+    "kind": "decision",
+    "digest": "52b1cd2126ba"
+  },
+  {
+    "path": "the-map-is-the-watch-list/alt-parse-the-shell-command",
+    "kind": "alternative",
+    "digest": "56dbd4216945"
+  },
+  {
+    "path": "the-map-is-the-watch-list/alt-tell-agents-to-declare-where-they-write",
+    "kind": "alternative",
+    "digest": "f6d4016b9a52"
+  },
+  {
+    "path": "the-map-is-the-watch-list/alt-watch-cwd-and-every-claim",
+    "kind": "alternative",
+    "digest": "3e138978b0fd"
+  },
+  {
     "path": "the-off-switch-cannot-need-a-shell",
     "kind": "decision",
     "digest": "d290927a3791"

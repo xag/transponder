@@ -39,11 +39,11 @@ import os
 import sys
 
 try:
-    from transponder import env
+    from transponder import env, scope
     from transponder.hooks import common
 except ImportError:                               # run straight from a checkout, uninstalled
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    from transponder import env
+    from transponder import env, scope
     from transponder.hooks import common
 
 # The tools whose input carries the path they will write. That fact no longer buys a warning before
@@ -141,38 +141,46 @@ def _target_path(payload: dict) -> str:
     return ti.get("file_path") or ti.get("notebook_path") or ""
 
 
-def _target(payload: dict) -> str | None:
-    """The repo this call acts on. For a file-editing tool it comes from the tool's own file_path —
-    not from cwd, which is a different repo often enough to matter (#8). WRITING_TOOLS earns its
-    keep here and nowhere else now: it no longer selects a different KIND of handling, only a better
-    answer to which checkout is being touched."""
-    tool = payload.get("tool_name") or ""
-    if tool in WRITING_TOOLS:
-        return common.repo_of(_target_path(payload))
-    return common.repo_root(payload.get("cwd") or os.getcwd())
+def _targets(payload: dict) -> list[str]:
+    """Every checkout this call is watched against — and NOT the session's cwd.
+
+    Two sources, both facts. The harness DECLARES the path a file-editing tool will write, so that
+    file's repo is known rather than guessed (#8). And the map knows which checkouts are in play,
+    because somebody declared them. Nothing else is watched, because a violation exists only
+    relative to a claim: an unwatched checkout is one nobody asked to protect.
+
+    `cwd` used to stand in for "the repo this call is about". That is the same move as reading a
+    command to guess what it writes, and it failed the same way — a real agent ran `printf >> file`
+    from the transponder checkout into a demo checkout, and the witness fingerprinted its own cwd,
+    saw nothing move, and stayed silent while the write landed in someone's declared region.
+    """
+    out = []
+    if (payload.get("tool_name") or "") in WRITING_TOOLS:
+        if repo := common.repo_of(_target_path(payload)):
+            out.append(env.canonical(repo))
+    out += scope.in_play()
+    return sorted(set(out))
 
 
 def pre_tool_use(payload: dict) -> None:
     tool = payload.get("tool_name") or ""
     if _skipped_mcp(tool):
         return
-    repo = _target(payload)
-    if not repo:
-        return                       # not a git checkout — nothing to witness, nobody to inform
-
+    repos = _targets(payload)
     _record()
     session = payload.get("session_id") or "unknown"
 
     notes = []
-    # Mail first, and before anything else this call might say: it is the only note that is about
-    # THIS agent's own work having been touched, and it is stale the moment the agent writes again.
-    notes += common.collect(session, repo)
-    if note := common.shared_note(repo, session):
+    if note := common.shared_note(session):
         notes.append(note)
-    # Every tool gets the before-picture now, Edit/Write included. They used to be handled here
-    # instead, by a warning the harness could not deliver in time (see common.py where heads_up
-    # stood); without a snapshot taken here, settle() would have nothing to compare against.
-    notes += common.watch(repo, session)         # the witness's before-picture; never a refusal
+    for repo in repos:
+        # Mail first: it is the only note about THIS agent's own work having been touched, and it is
+        # stale the moment the agent writes again.
+        notes += common.collect(session, repo)
+        # Every tool gets the before-picture, Edit/Write included. They used to be handled here
+        # instead, by a warning the harness could not deliver in time (see common.py where heads_up
+        # stood); without a snapshot taken here, settle() would have nothing to compare against.
+        notes += common.watch(repo, session)     # the witness's before-picture; never a refusal
     for n in notes:
         _say(n)
 
@@ -181,45 +189,44 @@ def post_tool_use(payload: dict) -> None:
     tool = payload.get("tool_name") or ""
     if _skipped_mcp(tool):
         return
-    repo = _target(payload)
-    if not repo:
-        return                       # not a git checkout — nothing to settle against
-
     _record()
     session = payload.get("session_id") or "unknown"
-    for note in common.settle(repo, session, _intent(payload)):
-        _say(note)
+    for repo in _targets(payload):
+        for note in common.settle(repo, session, _intent(payload)):
+            _say(note)
 
 
 def stop(payload: dict) -> None:
     """The one exit 2 in the library. It blocks the STOP — not a tool, not another agent — to ask
-    the departing session, exactly once (`stop_hook_active`), not to leave a dirty tree behind."""
-    repo = common.repo_root(payload.get("cwd") or os.getcwd())
-    if not repo:
-        return
+    the departing session, exactly once (`stop_hook_active`), not to leave a dirty tree behind.
+
+    Over the checkouts THIS session declared, not the one it happens to be sitting in: a session
+    that declared a region in another repo was previously asked about its cwd and walked away still
+    holding the region that mattered."""
     _record()
     session = payload.get("session_id") or "unknown"
-    block, notes = common.hand_back(
-        repo, session, already_asked=bool(payload.get("stop_hook_active")))
-    if block:
-        _deny(block)
-    for note in notes:
-        _say(note)
+    for repo in scope.in_play(session):
+        block, notes = common.hand_back(
+            repo, session, already_asked=bool(payload.get("stop_hook_active")))
+        for note in notes:
+            _say(note)
+        if block:
+            _deny(block)                 # exit 2 — so this asks about one checkout per stop
 
 
 def session_start(payload: dict) -> None:
-    repo = common.repo_root(payload.get("cwd") or os.getcwd())
-    if not repo:
-        return
     _record()
     session = payload.get("session_id") or "unknown"
-    # Also drained here, and this is the one moment it beats PreToolUse: stdout on SessionStart and
+    if note := common.shared_note(session):
+        _say(note)
+    # Drained here too, and this is the one moment it beats PreToolUse: output from SessionStart and
     # UserPromptSubmit reaches the model BEFORE it acts. An agent coming back to a region somebody
     # wrote in should learn it before its first tool call, not beside the result of one.
-    for note in common.collect(session, repo):
-        _say(note)
-    if note := common.drift_note(session, repo):
-        _say(note)
+    for repo in scope.in_play():
+        for note in common.collect(session, repo):
+            _say(note)
+        if note := common.drift_note(session, repo):
+            _say(note)
 
 
 HANDLERS = {

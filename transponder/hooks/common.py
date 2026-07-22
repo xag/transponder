@@ -157,31 +157,38 @@ def drift_note(session: str, repo: str) -> str | None:
 
 # --- the courier -----------------------------------------------------------------------------------
 
-def shared_note(repo: str, session: str) -> str | None:
-    """Introduce a shared checkout, once. An agent cannot see the other agents from inside its own
-    context — this is the fact it is missing, delivered at the first moment it matters and not
-    repeated on every call (a note printed forever is a note nobody reads).
+def shared_note(session: str) -> str | None:
+    """Introduce the machine, once per session. An agent cannot see the other agents from inside its
+    own context — this is the fact it is missing, and it is delivered without anyone having to work
+    out where the agent "is".
 
-    This used to be a refusal that held the session out until it declared. It teaches the same
-    protocol as a note, and a note cannot wedge the machine.
+    It used to introduce ONE CHECKOUT, chosen from the session's cwd, which meant an agent was told
+    about its neighbours only if it happened to be sitting in the same folder as them — and an agent
+    editing across checkouts (the ordinary case for anyone with a lib and its client open) was told
+    nothing at all. Guessing where an agent is was never necessary here: the thing it needs to know
+    is that the machine is shared and that it should say what it will edit.
     """
     if scope.declared(session):
         return None                  # a participant got the map back with its grant; the intro is
                                      # for the agent that has not spoken yet
-    claims = [c for c in scope.touching(repo) if c["session"] != session]
-    if not claims or _recall(NOTED_DIR, session, repo):
+    claims = [c for c in scope.live() if c["session"] != session]
+    if not claims or _recall(NOTED_DIR, session, "machine"):
         return None
-    _remember(NOTED_DIR, session, repo, "1")
+    _remember(NOTED_DIR, session, "machine", "1")
 
-    out = [f"THIS CHECKOUT IS SHARED — you are not alone in {repo}:", ""]
+    out = ["YOU ARE NOT THE ONLY AGENT ON THIS MACHINE.", ""]
     for c in claims:
-        out.append(f"  agent {c['session']} is working {', '.join(c['scope'])}"
+        out.append(f"  agent {c['session']} holds {', '.join(c['scope'])}"
                    + (f" — {c.get('intent')}" if c.get("intent") else ""))
     out += [
         "",
-        "Nothing is blocked. But their regions are their half-finished work: stay out of them, and",
-        "SAY WHERE YOU WILL WRITE so they can stay out of yours:",
+        "Nothing is blocked, ever. But those regions are somebody's half-finished work.",
+        "",
+        "DECLARE THE FILES AND FOLDERS YOU INTEND TO EDIT — the ones you will WRITE TO, which is",
+        "not always the checkout you are sitting in. Nothing watches a region nobody declared, so",
+        "an undeclared file is one where a collision is neither prevented nor reported:",
         "    declare_scope(repo, ['src/thing/**', 'tests/thing/**'], intent='what you are doing')",
+        "Widen with extend_scope() the moment you find you need more; release_scope() when done.",
         "",
         "AND SAY WHAT YOU ARE DOING, in a line or two — you are all building one app for one",
         "person, and the map can only say where you are, never what is coming:",

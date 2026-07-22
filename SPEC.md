@@ -169,7 +169,14 @@ it at session start and on each return of control.
 1. **never refuse a tool call.** The one permitted exit-2 is the Stop boundary (obligation 6);
 2. deliver the courier's three notes (§3) and the witness's reports (§4, §5) through the harness's
    own channel into the agent's context;
-3. key claims and witness on **the repo that owns the written path**, never the session's cwd;
+3. key claims and witness on facts, **never on the session's cwd**. Two sources, and no third: for
+   a tool whose input names the file it will write, the repo that owns *that path*; for everything
+   else, **the checkouts that are on the map** — the ones somebody declared. An adapter MUST NOT
+   pick a checkout from where the session happens to be sitting. That is a prediction of the same
+   family as reading a command to guess what it writes (§7a), and it fails the same way: an agent
+   in one checkout shelling a write into another is witnessed against the wrong tree, which reports
+   `nothing moved` and is believed. A checkout nobody declared is not watched, and that costs
+   nothing that was ever protected — a violation exists only against a claim;
 4. cover **every shell the harness exposes** and its MCP traffic in the witness's matchers — a
    tool the witness does not see is a write that never happened;
 5. detect its own blind half: a before-picture that is never settled means the after-hook is not

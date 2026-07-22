@@ -175,14 +175,20 @@ def test_a_missing_flight_recorder_costs_the_tape_not_the_courier(repo, tmp_path
     res = subprocess.run([sys.executable, CLAUDE], input=json.dumps(payload), env=env_,
                          capture_output=True, text=True)
     assert res.returncode == 0
-    assert "SHARED" in res.stdout, (
+    assert "NOT THE ONLY AGENT" in res.stdout, (
         "with no recorder installed, the courier went quiet entirely")
 
 
 def test_a_half_wired_install_is_a_blind_witness_and_says_so(repo):
     """PreToolUse without PostToolUse = snapshots that are never settled = writes that are never
     observed. The old lock DEGRADED here; the courier cannot degrade, but a witness everyone
-    believes is watching, and which is not, is the vacuously-green failure — so it says so, once."""
+    believes is watching, and which is not, is the vacuously-green failure — so it says so, once.
+
+    The declare is not scaffolding: the witness watches DECLARED checkouts now, so a repo nobody
+    claimed is not watched and has nothing to be blind about. Being blind is a property of a region
+    someone asked to have protected."""
+    scope.declare(repo, "A", ["a.txt"], "working")
+
     def pre_only(session, command):
         return run_hook(CLAUDE, {"hook_event_name": "PreToolUse", "tool_name": "Bash",
                                  "tool_input": {"command": command}, "cwd": repo,
@@ -197,7 +203,13 @@ def test_a_half_wired_install_is_a_blind_witness_and_says_so(repo):
 
 
 def test_session_start_reports_drift(repo):
-    """The read-side check — the one part of this library that was never wrong."""
+    """The read-side check — the one part of this library that was never wrong.
+
+    It now runs over the checkouts on the MAP rather than the session's cwd, so the declare is what
+    puts this repo in play. That is a real narrowing, recorded rather than hidden: a session that
+    declares nothing gets no drift check, because there is no longer any guess about which checkout
+    it means."""
+    scope.declare(repo, "A", ["a.txt"], "working")
     assert run_hook(CLAUDE, {"hook_event_name": "SessionStart", "cwd": repo,
                              "session_id": "A"}).returncode == 0
     with open(os.path.join(repo, "b.txt"), "w") as f:
