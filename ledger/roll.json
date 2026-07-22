@@ -117,7 +117,7 @@
   {
     "path": "hyp-subagents-share-the-session-id",
     "kind": "hypothesis",
-    "digest": "9cae5db099e9"
+    "digest": "28ac2c4da4c7"
   },
   {
     "path": "hyp-subagents-share-the-session-id/kill-subagent-has-own-id",
@@ -225,6 +225,26 @@
     "digest": "b4b92fe8dea7"
   },
   {
+    "path": "never-hand-a-child-our-stdin",
+    "kind": "decision",
+    "digest": "999692be14ae"
+  },
+  {
+    "path": "never-hand-a-child-our-stdin/alt-cache-the-tree-state",
+    "kind": "alternative",
+    "digest": "a25e9e409f80"
+  },
+  {
+    "path": "never-hand-a-child-our-stdin/alt-raise-the-git-timeout",
+    "kind": "alternative",
+    "digest": "7575dcecabaa"
+  },
+  {
+    "path": "never-hand-a-child-our-stdin/alt-run-git-off-the-event-loop",
+    "kind": "alternative",
+    "digest": "470ef7227b5d"
+  },
+  {
     "path": "observe-do-not-predict",
     "kind": "decision",
     "digest": "64ba1966c79e"
@@ -282,7 +302,17 @@
   {
     "path": "release",
     "kind": "gate",
-    "digest": "cccb704f9d72"
+    "digest": "5373c47964d8"
+  },
+  {
+    "path": "subagent-writes-are-unattributable",
+    "kind": "debt",
+    "digest": "87ae806bbfe6"
+  },
+  {
+    "path": "subagent-writes-are-unattributable/identify-the-actor-not-the-session",
+    "kind": "discharge",
+    "digest": "dfb05a8fc49a"
   },
   {
     "path": "the-background-task-cannot-be-observed",

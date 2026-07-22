@@ -652,6 +652,62 @@ DECISIONS = [
                   payload={"why": "write-only — shows nothing. The value of the icon is the STATE "
                                   "being visible at a glance, ON/OFF/lying, before any click"}),
          ]),
+
+    Node(id="never-hand-a-child-our-stdin", kind="decision",
+         name="A subprocess never inherits this process's stdin — inside the MCP server, stdin is "
+              "the client's pipe",
+         payload={"rationale":
+                  "Found by using the thing as intended: two agents, one checkout, one file. Neither "
+                  "agent ever reached the file. Both spent thirty minutes failing to complete their "
+                  "FIRST `scopes()` call and were killed still trying — obeying the protocol to the "
+                  "end, which is the only reason this was visible as a channel failure rather than "
+                  "as two agents clobbering each other.\n\n"
+                  "`env._run` ran git with `capture_output=True` and INHERITED STDIN. Inside the MCP "
+                  "server this process's stdin IS the client's stdio pipe; a child that inherits it "
+                  "does not exit until that pipe does, so `communicate()` blocks joining its reader "
+                  "threads until the 30s timeout. `_fmt_scopes` makes two git calls, so `scopes()` "
+                  "cost 60.06s — measured against the real server driven over raw stdio, not "
+                  "inferred. And the blocking call runs ON THE EVENT-LOOP THREAD, so FastMCP "
+                  "serialises every request and the server is deaf for the whole 60s: with three "
+                  "actors calling it, one request waited 1800s and was aborted without ever being "
+                  "served. A 60s bug became a dead channel.\n\n"
+                  "The latency is not the finding. THE TIMEOUT RETURNS None, and `_run`'s contract "
+                  "cannot tell 'git failed' from 'git never answered' — so `git_head` reported `?` "
+                  "and `git_dirty` reported a CLEAN TREE. The map told every reader the checkout was "
+                  "clean while it was dirty, `release_scope` saw nothing to object to, and the drift "
+                  "check lost its baseline. A witness that fails OPEN and SILENT is the one failure "
+                  "this library cannot have, and it had it on every MCP call for as long as the "
+                  "server has existed.\n\n"
+                  "`stdin=subprocess.DEVNULL`: 60.06s -> 0.08s, and the server now answers `tree "
+                  "DIRTY, 1 change(s), head 2be1c29055fc` where it had answered `tree clean, head "
+                  "?`. The hooks were never affected — they run git in short-lived processes with no "
+                  "stdio transport — which is exactly why the courier and the witness worked "
+                  "throughout while the negotiation channel was dead, and why nothing in the test "
+                  "suite noticed.\n\n"
+                  "RESIDUAL, stated rather than fixed: `_run` still collapses timeout into None, so "
+                  "any future git call slow enough to time out still reads as a clean tree. The "
+                  "stdin bug made that reachable on every call; closing it makes it rare, not "
+                  "impossible."},
+         children=[
+             Node(id="alt-raise-the-git-timeout", kind="alternative",
+                  name="Raise (or lower) the 30s timeout",
+                  payload={"why": "reads the symptom as slowness. Longer makes each hang longer; "
+                                  "shorter makes the silently-wrong clean-tree answer arrive sooner. "
+                                  "Neither touches the reason the child never exits, and the "
+                                  "dangerous half of the bug is the None, not the wait"}),
+             Node(id="alt-run-git-off-the-event-loop", kind="alternative",
+                  name="Run the git calls in a worker thread so the server stays responsive",
+                  payload={"why": "true, and insufficient. It cures the DEAFNESS — other calls would "
+                                  "be served during the stall — and leaves every git answer wrong by "
+                                  "timeout, which is the part that corrupts the map. Worth doing on "
+                                  "its own merits; it is not this bug"}),
+             Node(id="alt-cache-the-tree-state", kind="alternative",
+                  name="Cache HEAD and the porcelain instead of shelling out per call",
+                  payload={"why": "trades a wrong answer for a stale one, on the single question "
+                                  "`scopes()` exists to answer truthfully. A map that is confidently "
+                                  "out of date is the same cardinal sin as a map that is confidently "
+                                  "wrong — see tray-is-a-face-not-an-authority"}),
+         ]),
 ]
 
 HYPOTHESES = [
@@ -769,7 +825,23 @@ HYPOTHESES = [
                            "from one that shrugs (the lock parks anyway, and this was theatre)."}),
          ]),
 
+    # RE-VERIFIED 2026-07-22, and the verification is bad news now. The claim still holds exactly as
+    # written — two subagents launched against one checkout fired every hook call under the PARENT's
+    # session_id, and `kill-subagent-has-own-id` did not fire. What changed is the SIGN of the fact.
+    # This hypothesis was written under v1, where a shared id was the thing standing between a parent
+    # and a deadlock against its own child, so confirming it was a relief. `information-not-exclusion`
+    # deleted the mutex, and under a MAP the same fact means N actors wear one identity and the map
+    # cannot tell them apart. Carried on as subagent-writes-are-unattributable.
+    #
+    # This is the second time in this file a falsifier has been found watching the wrong door (see
+    # hyp-serialising-shells-does-not-starve). The lesson is not 'recalibrate the falsifier' — this
+    # one is still correctly calibrated, and correctly silent. It is that a hypothesis carries an
+    # unstated premise about WHY the answer matters, and a design change can invert that premise
+    # while leaving the claim, the falsifier and the verdict all untouched and all still true.
     Node(id="hyp-subagents-share-the-session-id", kind="hypothesis",
+         meta={"amended": "28ac2c4da4c7 re-verified 2026-07-22 and the status line says so; the "
+                          "claim and its falsifier are untouched. What moved is what the answer "
+                          "MEANS — carried on as subagent-writes-are-unattributable"},
          name="A subagent's tool calls carry its PARENT's session id, so the lock is reentrant "
               "across the whole agent tree",
          payload={"claim": "A session spawns subagents; a subagent writes the same checkout its "
@@ -787,7 +859,9 @@ HYPOTHESES = [
                            "session_id. One level of nesting was exercised; deeper nesting is "
                            "inferred from the id being a property of the SESSION, not of the agent, "
                            "and that inference is what the falsifier below watches.",
-                  "status": "verified once, watched continuously",
+                  "status": "verified 2026-07-13; re-verified 2026-07-22 with two subagents on one "
+                            "checkout, still true, and now a LIABILITY rather than a relief — see "
+                            "subagent-writes-are-unattributable",
                   "cadence": "every hook call"},
          children=[
              Node(id="kill-subagent-has-own-id", kind="falsification",
@@ -941,6 +1015,67 @@ DEBTS = [
                                   "sound."}),
         ],
     ),
+
+    Node(
+        id="subagent-writes-are-unattributable",
+        kind="debt",
+        name="Every subagent of a session is the SAME agent to the map, so a collision between two "
+             "of them can be neither declared nor reported",
+        payload={
+            "note":
+                "Observed 2026-07-22, in a test built to produce an ordinary scope conflict: two "
+                "subagents, one checkout, one file, each told to edit it. The conflict was never "
+                "reachable. Every hook event either of them fired carried the PARENT's session_id. "
+                "They were not two agents on the map. They were one agent, three times over, "
+                "counting me.\n\n"
+                "The consequences follow mechanically from identity being the map's key. A's "
+                "declaration is handed back to B as B's own, because the map cannot double-book a "
+                "region it believes one session already holds — the conflict answer, the overlap and "
+                "the free-hint all go missing exactly when they are needed. B's write into A's "
+                "region is not a violation, because the witness attributes it to the session that "
+                "declared the region. And `release_scope` by either drops the region out from under "
+                "both.\n\n"
+                "A DEBT and not a hypothesis, by this file's own test: nothing about it is "
+                "uncertain. It is reachable today, it was reached on purpose, the tapes record it, "
+                "and the fix is known. Filing it as a belief awaiting evidence would hide a proved "
+                "hole behind the shape of an experiment.\n\n"
+                "Narrower than it sounds in one direction, wider in the other. Two SEPARATE sessions "
+                "still get distinct ids and the map works exactly as designed — verified on the same "
+                "tapes, where a second session worked ~/Projects/quern under its own id throughout. "
+                "But subagent fan-out is now an ordinary way to get several writers into one "
+                "checkout, and it is precisely the arrangement the map cannot see.",
+        },
+        params={
+            "attributes_a_write_to_its_author": Quantity(
+                value=0, unit="subagent-write", provenance="observed 2026-07-22", grounded=False,
+                source="the map and the witness both key on session_id, which is a property of the "
+                       "SESSION and not of the actor; no one has yet keyed either on something "
+                       "unique per actor"),
+        },
+        children=[
+            Node(id="identify-the-actor-not-the-session", kind="discharge",
+                 name="Key the map and the witness on an ACTOR id — declared by the agent, resolved "
+                      "by the hook — rather than on the harness's session id",
+                 payload={"competence": "this library, plus an agent willing to say which actor it "
+                                        "is; the tapes already record every id a hook receives, so "
+                                        "whether it worked is a query over a recording",
+                          "note": "The discharge is NOT 'wait for harnesses to give subagents their "
+                                  "own ids'. That is the mistake scope-declared-by-the-agent was "
+                                  "written to correct: the missing fact is a property of the AGENT'S "
+                                  "INTENT, and the agent can be made to say it out loud. "
+                                  "`declare_scope` already takes `session_id` as a string the agent "
+                                  "supplies, so half of this is free — a subagent can declare "
+                                  "itself.\n\n"
+                                  "The other half is the hard half and must not be skipped: the "
+                                  "COURIER AND THE WITNESS learn identity only from the hook "
+                                  "payload, which carries the session and nothing else. An actor id "
+                                  "known to the map but invisible to the witness would make the map "
+                                  "MORE wrong, not less — regions correctly split between two "
+                                  "actors, and every violation of them still attributed to whichever "
+                                  "one declared first. So this is discharged only when a hook can "
+                                  "resolve the actor behind a call, and not before."}),
+        ],
+    ),
 ]
 
 # --- the gate ------------------------------------------------------------------------
@@ -948,6 +1083,9 @@ DEBTS = [
 GATE = Node(
     id="release",
     kind="gate",
+    meta={"amended": "5373c47964d8 admits subagent-writes-are-unattributable, and the note records "
+                     "that the gate went red again; nothing already admitted was changed or "
+                     "removed"},
     name="What is allowed onto the write path of every session on a machine",
     payload={
         "note":
@@ -962,9 +1100,18 @@ GATE = Node(
             "Changing the claims, out loud, in the spec, with the user driving, is a legitimate "
             "way for a debt to die — quietly weakening the claims to launder a debt is not, and "
             "the difference is whether the change is written where the next reader must see it. "
-            "It is: SPEC.md says detection-not-prevention on every path, as the design.",
+            "It is: SPEC.md says detection-not-prevention on every path, as the design.\n\n"
+            "RED AGAIN 2026-07-22, and this time by a debt that was PAID FOR IN ADVANCE and "
+            "collected anyway. `hyp-subagents-share-the-session-id` recorded the exact fact behind "
+            "subagent-writes-are-unattributable in 2026-07-13, verified it, and filed it as good "
+            "news — which it was, for the design that existed then. The ledger held the fact and "
+            "missed the consequence, because the consequence only appeared when "
+            "information-not-exclusion changed what identity was FOR. Worth stating plainly: a "
+            "green gate means nothing unsound is admitted by the links it has, and it says nothing "
+            "about a premise that quietly rotted under a node nobody re-read.",
     },
-    links={"admits": ["cursor-settles-late", "mcp-writes-settle-late"]},
+    links={"admits": ["cursor-settles-late", "mcp-writes-settle-late",
+                      "subagent-writes-are-unattributable"]},
 )
 
 

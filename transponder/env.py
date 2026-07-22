@@ -149,8 +149,15 @@ def remove_claim(session: str) -> bool:
 
 
 def _run(args: list[str], cwd: str | None) -> str | None:
+    """`stdin=DEVNULL` is load-bearing, not hygiene. Inside the MCP server, this process's stdin IS
+    the client's stdio pipe; a child that inherits it does not exit until that pipe does, so
+    `communicate()` blocks on its reader threads until the timeout — 30s per git call, 60s per
+    `scopes()`. Worse than slow: the timeout returns None, so `git_head` reports `?` and `git_dirty`
+    reports a CLEAN TREE, and the witness fails open and quiet. Measured: 60.06s -> 0.08s.
+    """
     try:
-        res = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=30)
+        res = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=30,
+                             stdin=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):
         return None
     return res.stdout if res.returncode == 0 else None
