@@ -223,17 +223,25 @@ def scope_of(session: str) -> list[str]:
 
 
 def _write(session: str, scope: list[str], intent: str, now: float,
-           acquired_at: float | None = None, repo: str = "") -> dict:
+           acquired_at: float | None = None, repo: str = "", until: float = 0.0) -> dict:
+    """`until` is what the agent SAID it needs — advisory, and the difference matters.
+
+    Liveness is still the lease: an agent that stops renewing lets go on its own, whatever it
+    predicted. `until` exists so a blocked agent is told WHEN to come back instead of spinning, and
+    so an optimistic estimate cannot squat a region past the point where anyone can tell whether
+    the agent is alive.
+    """
     claim = {
         "session": session, "scope": sorted(set(scope)), "intent": intent, "repo": repo,
-        "acquired_at": acquired_at or now, "renewed_at": now,
+        "acquired_at": acquired_at or now, "renewed_at": now, "until": until,
         "expires_at": now + LEASE_SECONDS, "lease_seconds": LEASE_SECONDS,
     }
     env.write_claim(session, json.dumps(claim, indent=2, sort_keys=True))
     return claim
 
 
-def declare(anchor: str, session: str, resources: list[str], intent: str = "") -> dict:
+def declare(anchor: str, session: str, resources: list[str], intent: str = "",
+            minutes: float = 0.0) -> dict:
     """Reserve a scope. **All-or-nothing** — granted entire, or not at all (§3).
 
     Not a preference: it is conservative two-phase locking, and it is what keeps the HAPPY path free
@@ -260,13 +268,15 @@ def declare(anchor: str, session: str, resources: list[str], intent: str = "") -
                 "conflicts": [{"session": c["session"], "scope": c["scope"],
                                "intent": c.get("intent") or "",
                                "held_for": int(now - c.get("acquired_at", now)),
+                               "free_in": max(0, int((c.get("until") or 0) - now)),
                                "intersection": sorted({hit[2] for hit in hits})}
                               for c, hits in clash],
                 "free_hint": _free_hint(anchor, others)}
 
     was = mine(session)
     claim = _write(session, scope, intent, now, acquired_at=was["acquired_at"] if was else None,
-                   repo=env.canonical(anchor))
+                   repo=env.canonical(anchor),
+                   until=(now + minutes * 60) if minutes else (was or {}).get("until", 0.0))
     return {"status": "granted", "claim": claim}
 
 
@@ -329,7 +339,7 @@ def renew(session: str) -> None:
     claim = mine(session)
     if claim:
         _write(session, claim["scope"], claim.get("intent", ""), env.now(),
-               claim["acquired_at"], repo=claim.get("repo", ""))
+               claim["acquired_at"], repo=claim.get("repo", ""), until=claim.get("until", 0.0))
 
 
 def _free_hint(anchor: str, others: list[dict]) -> list[str]:
@@ -346,40 +356,3 @@ def _free_hint(anchor: str, others: list[dict]) -> list[str]:
         if not any(overlaps(f"{root}/{entry}/**", t) for t in taken):
             free.append(f"{entry}/**")
     return free[:12]
-
-
-# --- the witness (SPEC §4) -------------------------------------------------------------------
-
-def violations(session: str, written: list[str]) -> list[dict]:
-    """Canonical paths this agent wrote OUTSIDE its own scope, and whose region another agent had
-    reserved.
-
-    This is what a shell or an MCP call gets instead of a gate: the target of those is not declared
-    and v1 §7a is the standing proof it cannot be recovered from the text, so the write is WITNESSED
-    rather than prevented. §7a is explicit that this is a real loss, and it is the trade the trial
-    is testing.
-
-    A write outside your scope that lands in NOBODY's region is untidy, not dangerous — it is
-    reported to you (you evidently meant to declare it) but it is not a violation against anyone.
-    """
-    my_scope = scope_of(session)
-    others = [c for c in live() if c["session"] != session]
-
-    out = []
-    for path in written:
-        if covers(my_scope, path):
-            continue
-        for c in others:
-            if covers(c["scope"], path):
-                out.append({"path": path, "victim": c["session"], "scope": c["scope"],
-                            "intent": c.get("intent") or ""})
-                break
-    return out
-
-
-def stray(session: str, written: list[str]) -> list[str]:
-    """Wrote outside your own scope, into nobody's region. Not a violation — a missing declaration."""
-    my_scope = scope_of(session)
-    others = [c for c in live() if c["session"] != session]
-    return [p for p in written
-            if not covers(my_scope, p) and not any(covers(c["scope"], p) for c in others)]

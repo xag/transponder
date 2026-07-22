@@ -25,4 +25,4 @@ from transponder.scope import (  # noqa: F401
     scope_of,
     touching,
 )
-from transponder.witness import drift, snapshot, written_between  # noqa: F401
+from transponder.witness import drift  # noqa: F401

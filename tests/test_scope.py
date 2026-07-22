@@ -20,7 +20,7 @@ import subprocess
 
 from transponder import scope
 
-from test_adapters import CLAUDE, claude_edit, claude_shell, claude_write, run_hook
+from test_adapters import CLAUDE, claude_edit, claude_shell, run_hook
 
 
 def declare(repo, session, paths, intent="working"):
@@ -98,48 +98,41 @@ def test_a_lapsed_claim_binds_nobody(repo, monkeypatch):
 
 # --- 2. the courier ---------------------------------------------------------------------------------
 
-def test_a_write_into_anothers_region_is_reported_after_it_lands(repo):
-    """This used to assert a HEADS UP before the write, and that moment turned out not to exist:
-    a hook cannot reach a Claude Code agent before its tool runs without refusing the call. So an
-    Edit is witnessed exactly like a shell — the write succeeds, and the truth follows immediately,
-    with the remedy attached. Nothing is prevented, which was always the honest description."""
-    dirs(repo, "api", "web")
+
+
+def test_the_waiter_runs_through_a_real_shell_and_reports_both_ways(repo):
+    """A blocked agent waits by launching this in the background; the harness noticing it exit is
+    the only thing that can wake an agent.
+
+    Driven through an actual shell, both ways, because this library has already shipped an escape
+    hatch that was tested twice and had never once run: `wait_until_free` appeared in ZERO of 4528
+    recorded sessions, because the command string it minted died in bash before Python saw it, and
+    exiting 127 reported to the harness as success. Two green tests around a boundary nobody
+    exercised are worse than no tests, because they are believed."""
+    import sys
+
+    dirs(repo, "api")
     declare(repo, "A", ["api/**"], intent="the rate limiter")
-    declare(repo, "B", ["web/**"])
 
-    res = claude_write(repo, "B", path="api/server.py")     # B reaches into A's region
+    argv = [sys.executable, "-m", "transponder.wait", "--repo", repo,
+            "--paths", "api/**", "--max-minutes", "0", "--every", "1"]
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    assert res.returncode == 0, "nothing is ever refused"
-    assert "SCOPE VIOLATION" in res.stdout, "an Edit into another's region went unwitnessed"
-    assert "agent A" in res.stdout and "the rate limiter" in res.stdout
-    assert not res.pre_stdout.strip(), "the pre half spoke about a write it could not stop in time"
+    held = subprocess.run(argv, cwd=root, capture_output=True, text=True, timeout=60)
+    assert held.returncode == 1, f"the waiter did not see a live claim: {held.stdout}{held.stderr}"
+    assert "STILL HELD" in held.stdout, "giving up must say so, not exit quietly"
+    assert "A" in held.stdout, "a waiter that gives up must name who it was waiting for"
 
+    # ...and the way an agent will actually launch it: one string, handed to a shell.
+    quoted = " ".join(f'"{a}"' for a in argv)
+    viashell = subprocess.run(quoted, shell=True, cwd=root, capture_output=True, text=True, timeout=60)
+    assert viashell.returncode == 1, (
+        f"the waiter died before Python saw it: rc={viashell.returncode} {viashell.stderr[:200]}")
 
-def test_the_agent_whose_region_was_written_is_told_on_its_next_call(repo):
-    """Both parties, or neither is served.
-
-    `victim` used to appear in exactly two places: computed in scope.violations, and rendered into
-    the OFFENDER's message. The agent whose half-finished work had just been overwritten was
-    addressed by nothing at all — so the remedy asked the offender to put back bytes it had never
-    seen (a guess, in a library that refuses to guess) and made it write into the region a second
-    time to do it, firing the alarm again at an agent that was complying."""
-    dirs(repo, "api", "web")
-    declare(repo, "A", ["api/**"], intent="the rate limiter")
-    declare(repo, "B", ["web/**"])
-
-    offender = claude_write(repo, "B", path="api/server.py")
-    assert "SCOPE VIOLATION" in offender.stdout
-    assert "THEY HAVE BEEN TOLD TOO" in offender.stdout
-    assert "Put back what was theirs" not in offender.stdout, (
-        "the offender is being asked to reconstruct work it never saw")
-
-    mail = claude_shell(repo, "A", "cat a.txt")
-    assert "SOMEONE WROTE IN YOUR REGION" in mail.pre_stdout, "the victim was never told"
-    assert "api/server.py" in mail.pre_stdout and "agent B" in mail.pre_stdout
-
-    again = claude_shell(repo, "A", "cat a.txt")
-    assert "SOMEONE WROTE IN YOUR REGION" not in again.pre_stdout, (
-        "redelivered — a note repeated on every call is a note that stops being read")
+    scope.release("A")
+    freed = subprocess.run(argv, cwd=root, capture_output=True, text=True, timeout=60)
+    assert freed.returncode == 0, f"the region freed and the waiter did not notice: {freed.stdout}"
+    assert "FREE" in freed.stdout
 
 
 def test_a_channel_message_is_pulled_and_a_direct_one_is_pushed(repo):
@@ -190,7 +183,7 @@ def test_the_holder_is_told_that_someone_wanted_its_region(repo):
     declare(repo, "A", ["api/**"], intent="the rate limiter")
 
     for _ in range(3):
-        server.declare_scope(repo, ["api/handlers/**"], "B", "adding a handler")
+        server.declare_work(repo, "B", ["api/handlers/**"], "adding a handler")
 
     got = messages.unread("A", repo, kinds=("direct",), mark=False)
     wanted = [m for m in got if "SOMEONE WANTS YOUR REGION" in m["body"]]
@@ -212,85 +205,18 @@ def test_a_session_parked_on_a_question_is_told_on_the_way_back_in(repo):
 
     assert "UserPromptSubmit" in EVENTS, "the handler exists but nothing will ever call it"
 
-    dirs(repo, "api", "web")
-    declare(repo, "A", ["api/**"], intent="the rate limiter")
-    declare(repo, "B", ["web/**"])
-    claude_write(repo, "B", path="api/server.py")
-
-    back = run_hook(CLAUDE, {"hook_event_name": "UserPromptSubmit", "cwd": repo, "session_id": "A"})
-    assert "SOMEONE WROTE IN YOUR REGION" in back.stdout, (
-        "a session coming back from its human was not told its region had been written")
-
-
-def test_a_holder_writing_its_own_region_is_not_blamed_on_a_passer_by(repo):
-    """A fingerprint proves the TREE moved. It does not prove YOU moved it.
-
-    Observed live: a holder appending to its own declared file every ten seconds, and a passer-by
-    whose only crime was a `head`/`wc` loop long enough to span a tick. Four notes told the reader
-    it had written in someone's region, and four more told the holder its rebuild had been trampled
-    by an agent that never wrote a byte. `observe-do-not-predict` says "an observation cannot be
-    wrong about what a command did" — true of one agent, false of two, which is false in the only
-    situation this library is for.
-
-    The evidence that separates the cases is the holder's own renewal: if it was working in its own
-    region while the call ran, the likelier author is the agent that declared it, and the passer-by
-    is told so in terms it can weigh — while the HOLDER is told nothing at all, because a false
-    accusation delivered to the party whose work is at stake is worse than silence."""
     from transponder import messages
 
-    dirs(repo, "api")
-    declare(repo, "A", ["api/**"], intent="rebuilding the index")
-
-    payload = {"tool_name": "Bash", "tool_input": {"command": "wc -l a.txt"},
-               "cwd": repo, "session_id": "B"}
-    assert run_hook(CLAUDE, {**payload, "hook_event_name": "PreToolUse"}).returncode == 0
-
-    scope.renew("A")                                    # A is awake and working, as a holder is
-    with open(os.path.join(repo, "api", "server.py"), "a", encoding="utf-8") as f:
-        f.write("a row A appended to its own file\n")
-
-    post = run_hook(CLAUDE, {**payload, "hook_event_name": "PostToolUse"})
-
-    assert "SCOPE VIOLATION" not in post.stdout, "a reader was named as the author of someone's own write"
-    assert "cannot see who moved it" in post.stdout, "the passer-by should still be told what it saw"
-    assert not [m for m in messages.unread("A", repo, kinds=("direct",), mark=False)
-                if "SOMEONE WROTE IN YOUR REGION" in m["body"]], (
-        "the holder was told its own work had been trampled")
-
-
-def test_a_shell_write_from_a_different_checkout_is_still_witnessed(repo, tmp_path):
-    """The hole that removed the last guess from this library.
-
-    A real agent sat in one checkout and ran `printf >> file` into another. The witness picked the
-    repo to fingerprint from the session's CWD — "the folder you are sitting in is probably the one
-    you are writing to" — snapshotted its own checkout, saw nothing move there, and said nothing
-    while the write landed in somebody's declared region. Same shape as reading a command to guess
-    what it writes (#4, #7); it survived only because it had never been the thing that broke.
-
-    There was nothing to guess: a violation exists only against a claim, so the set worth watching
-    is the set that has been claimed, and the map already knew it."""
-    elsewhere = tmp_path / "elsewhere"
-    elsewhere.mkdir()
-    subprocess.run(["git", "init", "-q"], cwd=elsewhere, check=True)
-    (elsewhere / "x.txt").write_text("x\n")
-    subprocess.run(["git", "add", "-A"], cwd=elsewhere, check=True)
-    subprocess.run(["git", "commit", "-qm", "e"], cwd=elsewhere, check=True)
-
-    dirs(repo, "api")
+    dirs(repo, "api", "web")
     declare(repo, "A", ["api/**"], intent="the rate limiter")
+    messages.send(sender="B", body="I need api/x when you are free", kind="direct",
+                  repo=repo, to="A")
 
-    target = os.path.join(repo, "api", "server.py")
-    payload = {"tool_name": "Bash", "tool_input": {"command": f'printf x >> "{target}"'},
-               "cwd": str(elsewhere), "session_id": "B"}      # B is sitting somewhere ELSE
-    assert run_hook(CLAUDE, {**payload, "hook_event_name": "PreToolUse"}).returncode == 0
-    with open(target, "a", encoding="utf-8") as f:
-        f.write("a shell write from another checkout\n")
-    post = run_hook(CLAUDE, {**payload, "hook_event_name": "PostToolUse"})
+    back = run_hook(CLAUDE, {"hook_event_name": "UserPromptSubmit", "cwd": repo, "session_id": "A"})
+    assert "I need api/x when you are free" in back.stdout, (
+        "a session coming back from its human was not handed what was waiting for it")
 
-    assert post.returncode == 0, "nothing is ever refused"
-    assert "A REGION YOU DO NOT HOLD CHANGED" in post.stdout, (
-        "a shell write into a declared region went unwitnessed because it came from another cwd")
-    assert "agent A" in post.stdout
+
 
 
 def test_an_agent_is_introduced_to_the_machine_once(repo):
@@ -308,29 +234,15 @@ def test_an_agent_is_introduced_to_the_machine_once(repo):
     first = claude_shell(repo, "B", "cat a.txt")
     assert "NOT THE ONLY AGENT" in first.pre_stdout
     assert "agent A" in first.pre_stdout
-    assert "declare_scope" in first.pre_stdout, "the intro must teach the way in"
-    assert "INTEND TO EDIT" in first.pre_stdout, (
-        "the intro must ask for the files they will WRITE TO — nothing watches an undeclared region")
+    assert "declare_work" in first.pre_stdout, "the intro must teach the way in"
+    assert "WAIT FOR THE GREEN LIGHT" in first.pre_stdout, (
+        "the protocol is declare-then-wait; an intro that omits the wait teaches half of it")
+    assert "channel(" in first.pre_stdout and "finish_work" in first.pre_stdout, (
+        "all four steps or none — an agent that never calls finish_work blocks the next one")
 
     second = claude_shell(repo, "B", "cat a.txt")
     assert "NOT THE ONLY AGENT" not in second.pre_stdout, "introduced twice — that is spam"
 
-
-def test_a_participant_writing_unclaimed_ground_is_asked_to_declare_it(repo):
-    """The map should say what participants are actually touching. It used to be made true FOR the
-    agent — the pre-write path silently widened A's claim to cover whatever it was about to edit.
-    That went with heads_up(), and the replacement is the treatment a shell has always had: say so,
-    and ask. Better on its own merits, not merely what was left: a map must not grow behind the
-    back of the agent whose name is on it."""
-    dirs(repo, "api")
-    declare(repo, "A", ["api/**"])
-
-    res = claude_write(repo, "A", path="notes.md")
-
-    assert res.returncode == 0
-    assert "extend_scope" in res.stdout, "a stray write was not reported to its own author"
-    assert not scope.covers(scope.scope_of("A"), scope.canon(os.path.join(repo, "notes.md"))), \
-        "the map widened itself without the agent saying so"
 
 
 def test_a_write_inside_your_own_scope_is_silent(repo):
@@ -346,59 +258,7 @@ def test_a_write_inside_your_own_scope_is_silent(repo):
 
 # --- 3. the witness ---------------------------------------------------------------------------------
 
-def test_a_shell_write_into_anothers_region_is_witnessed_and_named(repo):
-    """A shell's target is not knowable before it runs — the old §7a proof stands — so this could
-    not have been prevented and is not. The path and the owner are NAMED; the author is not.
 
-    It used to say "you just wrote inside another agent's reserved region", and that sentence was
-    fiction whenever the owner was also working: a fingerprint proves the tree moved, not who moved
-    it. Only the agent reading this knows which it was, so it is the only party told, and the
-    channel is there for it to own up."""
-    dirs(repo, "api", "web")
-    declare(repo, "A", ["api/**"], intent="the rate limiter")
-    declare(repo, "B", ["web/**"])
-
-    res = claude_shell(repo, "B", "echo boom > api/server.py")
-
-    assert res.returncode == 0
-    assert "A REGION YOU DO NOT HOLD CHANGED" in res.stdout
-    assert "api/server.py" in res.stdout
-    assert "agent A" in res.stdout
-    assert "if it was you" in res.stdout, "the one party who knows must be asked, not accused"
-
-
-def test_a_commit_that_sweeps_anothers_work_is_the_loudest_thing_said(repo):
-    """THE founding incident. A `git add -A` sweeps B's half-finished work into A's commit; the
-    witness chases HEAD into the object graph, names the swept file — and because a commit is the
-    one violation that is cleanly recoverable, the message carries the remedy, not just the
-    accusation."""
-    dirs(repo, "api", "web")
-    declare(repo, "A", ["api/**"])
-    declare(repo, "B", ["web/**"])
-
-    with open(os.path.join(repo, "web", "page.js"), "w") as f:
-        f.write("B's half-finished work")
-
-    res = claude_shell(repo, "A", "echo x > api/server.py && git add -A && git commit -qm sweep")
-
-    assert "web/page.js" in res.stdout, "the commit swept B's file and nobody noticed"
-    assert "agent B" in res.stdout
-    assert "git reset --soft HEAD~1" in res.stdout, "a recoverable violation must carry its remedy"
-    assert "IF THAT COMMIT IS YOURS" in res.stdout, (
-        "reset --soft is destructive when the commit is somebody else's — the remedy must be "
-        "conditional now that the witness does not claim to know whose it is")
-
-
-def test_a_participant_straying_onto_unclaimed_ground_is_told_to_declare(repo):
-    dirs(repo, "api", "web")
-    declare(repo, "A", ["api/**"])
-
-    res = claude_shell(repo, "A", "echo x > web/page.js")   # nobody holds web/**
-
-    assert res.returncode == 0
-    assert "VIOLATION" not in res.stdout, "nobody was hurt — this is not a violation"
-    assert "outside your declared scope" in res.stdout
-    assert "extend_scope" in res.stdout
 
 
 def test_a_shell_that_only_reads_says_nothing(repo):

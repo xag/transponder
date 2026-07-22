@@ -46,18 +46,12 @@ except ImportError:                               # run straight from a checkout
     from transponder import env, scope
     from transponder.hooks import common
 
-# The tools whose input carries the path they will write. That fact no longer buys a warning before
-# the write (the harness cannot deliver one without refusing the call — see common.py where
-# heads_up stood); it buys the right ANSWER to which checkout is being touched, which is not the
-# session's cwd often enough to matter (#8). Everything, these included, is observed after the fact.
-WRITING_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
-
 # Our OWN MCP tools, matched on the tool's name rather than its server's (the server can be
 # registered under any name). Skipped entirely: they operate on ~/.transponder, never on a working
 # copy, so there is nothing for the witness to see and no reason to spend two git calls looking.
 OUR_MCP_TOOLS = {"lock_drift", "lock_disable", "lock_enable", "lock_switch",
-                 "declare_scope", "extend_scope", "release_scope", "scopes",
-                 "send_message", "messages"}
+                 "declare_work", "extend_work", "finish_work", "channel",
+                 "send_message"}
 
 
 def _skipped_mcp(tool: str) -> bool:
@@ -136,67 +130,26 @@ def _intent(payload: dict) -> str:
     return tool
 
 
-def _target_path(payload: dict) -> str:
-    ti = payload.get("tool_input") or {}
-    return ti.get("file_path") or ti.get("notebook_path") or ""
-
-
-def _targets(payload: dict) -> list[str]:
-    """Every checkout this call is watched against — and NOT the session's cwd.
-
-    Two sources, both facts. The harness DECLARES the path a file-editing tool will write, so that
-    file's repo is known rather than guessed (#8). And the map knows which checkouts are in play,
-    because somebody declared them. Nothing else is watched, because a violation exists only
-    relative to a claim: an unwatched checkout is one nobody asked to protect.
-
-    `cwd` used to stand in for "the repo this call is about". That is the same move as reading a
-    command to guess what it writes, and it failed the same way — a real agent ran `printf >> file`
-    from the transponder checkout into a demo checkout, and the witness fingerprinted its own cwd,
-    saw nothing move, and stayed silent while the write landed in someone's declared region.
-    """
-    out = []
-    if (payload.get("tool_name") or "") in WRITING_TOOLS:
-        if repo := common.repo_of(_target_path(payload)):
-            out.append(env.canonical(repo))
-    out += scope.in_play()
-    return sorted(set(out))
-
-
 def pre_tool_use(payload: dict) -> None:
-    tool = payload.get("tool_name") or ""
-    if _skipped_mcp(tool):
+    """Deliver. That is the whole of it now.
+
+    This used to fingerprint every checkout on the map before the call and diff it afterwards, to
+    catch a write landing in somebody's region. That is gone: a fingerprint proves the tree moved
+    and never who moved it, so with two agents running it produced accusations rather than facts.
+    Nothing is detected here any more. The map is agreed BEFORE the work, by declare_work(), and an
+    agent that suspects something moved under it asks the channel.
+
+    What is left is opportunistic and makes no promises: a note reaches an agent when a hook happens
+    to fire, or when it asks. It is cheap now — no git, no snapshots — so it can run on every call.
+    """
+    if _skipped_mcp(payload.get("tool_name") or ""):
         return
-    repos = _targets(payload)
     _record()
     session = payload.get("session_id") or "unknown"
-
-    notes = []
     if note := common.shared_note(session):
-        notes.append(note)
-    for repo in repos:
-        # Mail first: it is the only note about THIS agent's own work having been touched, and it is
-        # stale the moment the agent writes again.
-        notes += common.collect(session, repo)
-        # Every tool gets the before-picture, Edit/Write included. They used to be handled here
-        # instead, by a warning the harness could not deliver in time (see common.py where heads_up
-        # stood); without a snapshot taken here, settle() would have nothing to compare against.
-        notes += common.watch(repo, session)     # the witness's before-picture; never a refusal
-    for n in notes:
-        _say(n)
-
-
-def post_tool_use(payload: dict) -> None:
-    tool = payload.get("tool_name") or ""
-    if _skipped_mcp(tool):
-        return
-    _record()
-    session = payload.get("session_id") or "unknown"
-    # The declared path is the ONE thing that makes attribution certain: the harness said this call
-    # would write that file. Everything else the fingerprint sees is "the tree moved", which is not
-    # the same fact and must not be reported as if it were.
-    declared = _target_path(payload) if (payload.get("tool_name") or "") in WRITING_TOOLS else ""
-    for repo in _targets(payload):
-        for note in common.settle(repo, session, _intent(payload), declared=declared):
+        _say(note)
+    for repo in scope.in_play():
+        for note in common.collect(session, repo):
             _say(note)
 
 
@@ -235,7 +188,6 @@ def session_start(payload: dict) -> None:
 
 HANDLERS = {
     "PreToolUse": pre_tool_use,
-    "PostToolUse": post_tool_use,
     "Stop": stop,
     "SessionStart": session_start,
     "UserPromptSubmit": session_start,   # same read-side check, on the way back in
@@ -247,16 +199,12 @@ HANDLERS = {
 # Matchers per event. Both shells (on Windows PowerShell is the one that runs) and `mcp__.*`, all
 # for the WITNESS — nothing matched here is ever refused. PostToolUse missing = a blind witness,
 # which watch() detects and says out loud rather than letting anyone believe they are covered.
-# PreToolUse and PostToolUse now match the SAME set, and must: every tool that can move the tree
-# needs both halves of the witness, a before-picture and an after. PostToolUse used to omit the
-# writing tools because a declared write was handled by a warning before it ran — that warning is
-# gone (see common.py), so omitting them here would leave Edit and Write observed by nobody, which
-# is the failure watch() shouts about.
-_WATCHED = "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|mcp__.*"
-
+# No matcher: the hook is a letterbox now, not a witness. PostToolUse is gone entirely — it existed
+# to take the after-picture, and there is no picture to take. What is left costs no git call, so
+# there is no reason to filter which tools it runs on, and every call is one more chance to hand an
+# agent something waiting for it.
 EVENTS = {
-    "PreToolUse": _WATCHED,
-    "PostToolUse": _WATCHED,
+    "PreToolUse": None,
     "Stop": None,
     "SessionStart": None,
     # HANDLERS has routed this to session_start since v2 — "the same read-side check, on the way
@@ -330,11 +278,26 @@ def wired(path: str | None = None) -> bool:
 
 
 def install(path: str | None = None) -> bool:
-    """Wire the four events. Idempotent, and it preserves any hooks that are not ours."""
+    """Wire our events. Idempotent, and it preserves any hooks that are not ours.
+
+    It also PRUNES: an event we used to wire and no longer do has our entry removed. Without that,
+    an upgrade leaves the old wiring in place pointing at a script that no longer handles the event
+    — which is how PostToolUse survived the witness being deleted, firing on every tool call to do
+    nothing. Silent, harmless, and exactly the kind of stale truth this library exists to object to.
+    """
     path = path or settings_path()
     data = _load_settings(path)
     hooks = data.setdefault("hooks", {})
-    for event, entries in hook_block().items():
+    block = hook_block()
+    for event in list(hooks):
+        if event in block:
+            continue
+        keep = [e for e in (hooks.get(event) or []) if not _ours(e)]
+        if keep:
+            hooks[event] = keep
+        else:
+            hooks.pop(event, None)
+    for event, entries in block.items():
         keep = [e for e in (hooks.get(event) or []) if not _ours(e)]
         hooks[event] = keep + entries
     _save_settings(path, data)

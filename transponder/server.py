@@ -46,72 +46,77 @@ def _fmt_scopes(repo: str) -> str:
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=True))
-def declare_scope(repo: str, scope: list[str], session_id: str, intent: str = "") -> str:
-    """**Declare the files and folders you intend to EDIT, before you edit them.**
+def declare_work(repo: str, session_id: str, paths: list[str], doing: str,
+                 minutes: float = 0.0) -> str:
+    """**Say where you will work, what you are doing, and for how long — then wait for the green
+    light this returns. Do not edit a shared checkout before you have it.**
 
-    `repo` is the checkout you will WRITE TO — not the one you are sitting in. They are the same
-    most of the time and they are not the same when it matters: a lib and its client, a tool and the
-    project it is being run against. Declare once per checkout you will touch; nothing stops you
-    holding regions in two.
+    This is not paperwork and it is not for anyone else's benefit. It is the only thing that stops
+    two agents unknowingly rewriting the same file, and it is the only way the agent beside you can
+    find out that your change is coming.
 
-    THE MAP IS THE WATCH LIST. Nothing observes a region nobody declared — a write there is neither
-    reported to you nor to anyone else, because a violation only exists against a claim. Declaring
-    is not paperwork you do for other agents' benefit; it is how your own work becomes something the
-    witness can see being trampled.
+      paths    the files and folders you will WRITE TO, in the checkout you will write to — not
+               necessarily the one you are sitting in. `src/api/**` a subtree, `src/api/x.py` one
+               file, `**` the whole checkout, `.git/index` the staging area (reserve it around a
+               commit, so `git add -A` cannot sweep up a neighbour's half-finished work).
+      doing    what you are actually doing, in a line. "replacing the auth middleware return type"
+               tells the agent next door to write its caller for the new shape. "work" tells it
+               nothing.
+      minutes  roughly how long you expect to need. Advisory — it is how a blocked agent knows
+               when to come back instead of asking every ten seconds.
 
-    Nothing is enforced and nothing is blocked: the map is information, the witness reports what
-    actually happens against it, and the agents — who all work for the same human — keep out of
-    each other's regions because breaking each other's work serves nobody.
+    RETURNS GREEN LIGHT, and then the region is yours and you can work.
 
-    `scope` is a list of **filesystem paths** — one namespace, whose overlap is always computable,
-    so a conflict names the exact intersection instead of guessing:
+    Or it returns NOT CLEAR, naming who holds the overlap, what they are doing, when they expect
+    to be free, and which regions are open right now. Then do one of three things, and say which:
+      1. take different work — the answer lists what is free;
+      2. ask your human — they may know the other work is abandoned, or want you to go ahead;
+      3. wait — say out loud that you are waiting, and poll rather than spin.
+    Nothing stops you writing anyway. Nothing here ever blocks a tool call. But nobody is watching
+    for collisions any more, so a write into somebody's declared region is simply lost work that
+    neither of you will find out about until it hurts.
 
-        "src/api/**"     a subtree (relative paths resolve against `repo`)
-        "src/api/x.py"   one file
-        ".git/index"     THE STAGING AREA — reserve it around a commit and release it after.
-                         `git add -A` sweeps up every dirty file in the checkout, including the
-                         half-finished work of the agent next door. Reserve the index, stage YOUR
-                         paths by name, commit, release.
-        "**"             the whole checkout
-
-    Spelling does not matter — case, symlinks, `..` all resolve to one canonical path, so two
-    agents cannot hold one file under two names.
-
-    `session_id` is your harness session id — the same one the hooks see. Pass it exactly.
-
-    Returns `granted`, or a `conflict` naming who holds what, the exact OVERLAP to subtract, and
-    what is free right now. A conflicting scope is not registered (the map never double-books a
-    region), but nothing stops your work — take a narrower scope, or split the work and file an
-    issue for the part that is theirs. Do NOT just write into their region: the witness will see
-    it, and both of you will be told.
+    Call finish_work() the moment you are done.
     """
     from transponder import scope as sc
 
-    v = sc.declare(repo, session_id, scope, intent)
+    v = sc.declare(repo, session_id, paths, doing, minutes=minutes)
     if v["status"] == "granted":
-        return (f"ON THE MAP — {', '.join(v['claim']['scope'])}.\n"
-                f"Other agents now see this is yours. extend_scope() if you find you need more, "
-                f"release_scope() when you are done.\n\n{_fmt_scopes(repo)}")
+        held = ", ".join(v["claim"]["scope"])
+        return (f"GREEN LIGHT — {held} is yours. Go ahead.\n"
+                f"extend_work() if it turns out to be bigger; finish_work() the moment you are "
+                f"done, because somebody may be waiting on exactly this.\n\n{_fmt_scopes(repo)}")
+
     if v["status"] == "rejected":
         return f"NOT EXPRESSIBLE — {v['reason']}"
 
-    out = ["CONFLICT — part of what you asked for is already someone's."]
+    out = ["NOT CLEAR — you cannot have all of that yet.", ""]
+    soonest = 0
     for c in v["conflicts"]:
-        out.append(f"  {', '.join(c['scope'])} — agent {c['session']} "
-                   f"({c['intent'] or 'no stated intent'}, {c['held_for']}s)")
+        out.append(f"  agent {c['session']} holds {', '.join(c['scope'])}"
+                   + (f" — {c['intent']}" if c.get("intent") else ""))
         if c.get("intersection"):
-            out.append(f"    overlap: {', '.join(c['intersection'])}   <- subtract exactly this")
+            out.append(f"     you overlap at: {', '.join(c['intersection'])}")
+        if c.get("free_in"):
+            out.append(f"     they expect to finish in ~{max(1, c['free_in'] // 60)} min")
+            soonest = max(soonest, c["free_in"])
     if v.get("free_hint"):
         out.append(f"\nFREE RIGHT NOW: {', '.join(v['free_hint'])}")
-    # The holder is told someone wanted its region, which nobody used to be. A conflict was computed
-    # and answered to the ASKER only — the same one-sided delivery as the violation report — so an
-    # agent sitting on `**` for an hour never learned anyone was queued behind it. That is the
-    # difference between finishing carefully and finishing SOON, and between holding a wide scope
-    # and narrowing it. Deduped per (asker, holder, repo): a retrying agent must not become a siren.
-    _tell_the_holders(repo, session_id, intent, v["conflicts"])
-    out.append("\nNothing is blocking you, and the holders have been told you asked. Take a narrower "
-               "scope and carry on, or say what you need and when — send_message(...) — and they can "
-               "tell you when it frees.")
+    _tell_the_holders(repo, session_id, doing, v["conflicts"])
+    out += [
+        "",
+        "Nothing is registered, and nothing is blocked. The holders have been told you asked.",
+        "Choose, and say which you chose:",
+        "  * declare_work() for something narrower or elsewhere — see FREE RIGHT NOW above;",
+        "  * go back to your human — they may know that work is stale, or want you to proceed;",
+        "  * wait, and SAY you are waiting. Do not spin: poll in the background with",
+        f"        python -m transponder.wait --repo \"{repo}\" --paths " +
+        " ".join(f'\"{p}\"' for p in paths[:4]),
+        "    launched as a background task — it exits when the region frees, and your harness will",
+        "    tell you when it does. Then declare_work() again.",
+    ]
+    if soonest:
+        out.append(f"    (expect roughly {max(1, soonest // 60)} minutes)")
     return "\n".join(out)
 
 
@@ -139,14 +144,14 @@ def _tell_the_holders(repo: str, asker: str, intent: str, conflicts: list[dict])
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=True))
-def extend_scope(repo: str, add: list[str], session_id: str) -> str:
-    """Widen the scope you already hold — for when you discover mid-task that you need one more
-    module. It answers immediately: granted, or who is there and exactly where you overlap."""
+def extend_work(repo: str, add: list[str], session_id: str) -> str:
+    """Widen what you declared, when the work turns out to be bigger than you said. Answers at
+    once: a green light, or who is already there and exactly where you overlap."""
     from transponder import scope as sc
 
     v = sc.extend(repo, session_id, add)
     if v["status"] == "granted":
-        return f"ON THE MAP — your scope is now {', '.join(v['claim']['scope'])}."
+        return f"GREEN LIGHT — you now hold {', '.join(v['claim']['scope'])}."
     if v["status"] == "rejected":
         return f"NOT EXPRESSIBLE — {v['reason']}"
     out = ["CONFLICT — that region is someone's."]
@@ -161,11 +166,12 @@ def extend_scope(repo: str, add: list[str], session_id: str) -> str:
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=True))
-def release_scope(repo: str, session_id: str, drop: list[str] | None = None) -> str:
-    """Take yourself off the map — entirely, or narrow by dropping the entries in `drop` (resolved
-    against `repo`). Do it the moment a region stops being yours: a map that says things that are
-    no longer true is worse than no map, and `.git/index` in particular should be held for the
-    length of a commit and not one second more."""
+def finish_work(repo: str, session_id: str, drop: list[str] | None = None) -> str:
+    """**Say you are done, the moment you are.** Everything, or just the entries in `drop`.
+
+    Somebody may be waiting on exactly this. A map that still says you are working where you are
+    not is worse than no map at all — it makes the next agent wait for nothing, or give up and
+    write anyway. Hold `.git/index` for the length of a commit and not one second more."""
     from transponder import scope as sc
 
     v = sc.release(session_id, drop, anchor=repo)
@@ -173,11 +179,54 @@ def release_scope(repo: str, session_id: str, drop: list[str] | None = None) -> 
     return f"Released. You now hold: {left}.\n\n{_fmt_scopes(repo)}"
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
-def scopes(repo: str) -> str:
-    """Who is working this checkout and where, plus the tree's state. Call it BEFORE you plan:
-    it is how you pick work that will not land in the middle of someone else's."""
-    return _fmt_scopes(repo)
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False))
+def channel(repo: str, session_id: str, path: str = "") -> str:
+    """**CALL THIS FIRST, before you plan or edit anything in a shared checkout.**
+
+    It answers the only question that matters before you start: is the work you are about to do
+    already somebody's? Pass `path` — the file or folder you are thinking of working on — and the
+    answer narrows to whoever overlaps it.
+
+    You also get every message waiting for you here: what other agents have said they are doing,
+    and anything addressed to you directly. Nothing is pushed reliably; this is how you find out.
+
+    Then:
+      * nothing in your way  -> declare_work(...) and start
+      * somebody is there    -> pick different work, ask your human, or wait (declare_work tells
+                                you when they expect to be done, and how to wait without spinning)
+    """
+    from transponder import messages as mail
+    from transponder import scope as sc
+
+    out = []
+    got = mail.unread(session_id, repo, kinds=("direct", "channel", mail.BROADCAST))
+    if got:
+        out += [f"{len(got)} message(s) for you:", ""] + [mail.render(m) + "\n" for m in got]
+
+    claims = sc.touching(repo)
+    if path and (target := sc.resolve(path, repo)):
+        near = [c for c in claims if sc.covers(c["scope"], target.rstrip("/*"))
+                or any(sc.overlaps(target, r) for r in c["scope"])]
+        if not near:
+            out.append(f"NOBODY IS WORKING {path} — it is yours to declare.")
+        else:
+            out.append(f"{path} OVERLAPS work already declared:")
+            for c in near:
+                out.append(f"  agent {c['session']}: {', '.join(c['scope'])}"
+                           + (f" — {c.get('intent')}" if c.get("intent") else "")
+                           + _eta(c))
+    out.append("")
+    out.append(_fmt_scopes(repo))
+    out.append("\nWhen you know what you will touch: declare_work(repo, session_id, paths, doing, "
+               "minutes). Do not start editing a shared checkout without it.")
+    return "\n".join(out)
+
+
+def _eta(claim: dict) -> str:
+    from transponder import env
+
+    left = int((claim.get("until") or 0) - env.now())
+    return f"  (expects to finish in ~{max(1, left // 60)} min)" if left > 0 else ""
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False))
@@ -227,33 +276,6 @@ def send_message(repo: str, session_id: str, body: str, to: str = "", everyone: 
     where = "every agent on this machine" if kind == "broadcast" else "agents working this checkout"
     return (f"Posted to {where}. They will see it when they call messages() — it is not pushed. "
             f"If one specific agent needs to know, send it direct as well.")
-
-
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False))
-def messages(repo: str, session_id: str, keep_unread: bool = False) -> str:
-    """**Ask what you have not been told.** Everything addressed to you, to this checkout, or to the
-    machine, that you have not already seen — oldest first.
-
-    Worth calling at the moments the hooks cannot cover: before you plan a big change, when you come
-    back to a checkout you left, and when you are about to do something delicate or slow. Direct
-    messages are pushed to you anyway; the CHANNEL and BROADCAST traffic is only ever here, because
-    serving a feed on every tool call is how an alarm becomes wallpaper.
-
-    Reading is not destructive to anyone else — a message is marked read for YOU and stands for
-    whoever else it was addressed to. `keep_unread=True` looks without marking.
-    """
-    from transponder import messages as mail
-
-    got = mail.unread(session_id, repo, kinds=("direct", "channel", mail.BROADCAST),
-                      mark=not keep_unread)
-    if not got:
-        return ("Nothing unread. (Channel and broadcast messages only ever arrive here, so this is "
-                "the whole of what anyone has said.)")
-    out = [f"{len(got)} message(s):", ""]
-    out += [mail.render(m) + "\n" for m in got]
-    if keep_unread:
-        out.append("(left unread — they will be offered again)")
-    return "\n".join(out)
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))

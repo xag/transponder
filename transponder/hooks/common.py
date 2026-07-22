@@ -36,9 +36,7 @@ import subprocess
 from transponder import env, messages, scope, witness
 
 SEEN_DIR = "seen"            # per-(session, repo): the last HEAD this session saw — the drift check
-SNAP_DIR = "snap"            # ...and the witness's before-picture for the tool now running
 NOTED_DIR = "noted"          # ...and whether the courier already introduced this shared checkout
-WARNED_DIR = "warned"        # ...and whether we already said the witness's settle half is missing
 # (an INBOX_DIR lived here for one afternoon; mail moved to transponder.messages, which addresses
 #  three ways and marks read per reader instead of deleting for everyone)
 
@@ -182,23 +180,29 @@ def shared_note(session: str) -> str | None:
                    + (f" — {c.get('intent')}" if c.get("intent") else ""))
     out += [
         "",
-        "Nothing is blocked, ever. But those regions are somebody's half-finished work.",
+        "Nothing here will ever block a tool call. But nothing watches for collisions either: if",
+        "you write where somebody else is working, that work is simply lost, and neither of you",
+        "finds out until it hurts. The agreement happens BEFORE the work, or it does not happen.",
         "",
-        "DECLARE THE FILES AND FOLDERS YOU INTEND TO EDIT — the ones you will WRITE TO, which is",
-        "not always the checkout you are sitting in. Nothing watches a region nobody declared, so",
-        "an undeclared file is one where a collision is neither prevented nor reported:",
-        "    declare_scope(repo, ['src/thing/**', 'tests/thing/**'], intent='what you are doing')",
-        "Widen with extend_scope() the moment you find you need more; release_scope() when done.",
+        "BEFORE YOU EDIT ANYTHING IN A SHARED CHECKOUT:",
+        "  1. channel(repo, session_id, path='what you mean to work on')",
+        "       who is there, and everything waiting for you. Nothing is pushed reliably —",
+        "       asking is how you find out.",
+        "  2. declare_work(repo, session_id, paths, doing, minutes)",
+        "       AND WAIT FOR THE GREEN LIGHT IT RETURNS. `paths` is what you will WRITE TO, in",
+        "       the checkout you write to — not always the one you are sitting in.",
+        "  3. NOT CLEAR? Do one of three things, and say out loud which: take different work",
+        "       (the answer lists what is free), go back to your human, or wait — it tells you",
+        "       how to wait in the background instead of spinning.",
+        "  4. finish_work(...) THE MOMENT YOU ARE DONE. Somebody may be waiting on exactly that.",
         "",
-        "AND SAY WHAT YOU ARE DOING, in a line or two — you are all building one app for one",
-        "person, and the map can only say where you are, never what is coming:",
+        "And say what you are DOING, not only where — the map cannot carry what is coming:",
         "    send_message(repo, session_id, 'replacing the auth middleware return type this hour')",
-        "That is what lets them write the caller once, for the shape it is about to have, instead",
-        "of writing it twice. `messages(repo, session_id)` is how you hear theirs — it is pulled,",
-        "never pushed, so ask before you plan anything large.",
+        "That is what lets the agent beside you write its caller once, for the shape it is about",
+        "to have, instead of writing it twice.",
         "",
-        "Check `scopes(repo)` before planning. Reserve `.git/index` around a commit and release it",
-        "after — `git add -A` sweeps up every dirty file in the checkout, including theirs.",
+        "Reserve `.git/index` around a commit and release it after: `git add -A` sweeps up every",
+        "dirty file in the checkout, including a neighbour's half-finished work.",
     ]
     return "\n".join(out)
 
@@ -234,216 +238,20 @@ def _rel(repo: str, path: str) -> str:
     return p[len(r):].lstrip("/") if p.lower().startswith(r.lower()) else p
 
 
-# --- the witness -----------------------------------------------------------------------------------
-
-def watch(repo: str, session: str) -> list[str]:
-    """The before-picture, for any tool whose effect is not declared (a shell, an MCP call).
-
-    A surviving snapshot memo means the settle half never ran — a half-wired install. With the lock
-    that used to make this dangerous gone, the cost is only blindness; but a blind witness that
-    everyone believes is watching is the vacuously-green failure, so it is said out loud, once.
-    """
-    notes = []
-    if _recall(SNAP_DIR, session, repo) and not _recall(WARNED_DIR, session, repo):
-        _remember(WARNED_DIR, session, repo, "1")
-        notes.append("transponder: the witness's settle half (PostToolUse) is not wired, so writes "
-                     "here are NOT being observed. Fix the hooks (python -m transponder.toggle on) and "
-                     "restart this session — it snapshotted its hooks when it started.")
-    _remember(SNAP_DIR, session, repo, json.dumps({"snap": witness.snapshot(repo)}))
-    return notes
-
-
-def settle(repo: str, session: str, intent: str, declared: str = "") -> list[str]:
-    """The after-picture: name the paths that moved, and say whose region they landed in — and be
-    honest about which of those two facts we actually have.
-
-    A FINGERPRINT PROVES THE TREE MOVED. IT DOES NOT PROVE YOU MOVED IT. That distinction was
-    missing here, and it produced fiction the first time two agents ran at once: a holder appending
-    to its own declared file every ten seconds, and a passer-by whose only crime was a `head`/`wc`
-    loop long enough to span a tick. Four notes went out naming the reader as the author, and four
-    more went to the holder saying its work had been trampled by someone who never wrote a byte.
-    The claim in observe-do-not-predict — "an observation cannot be wrong about what a command
-    did" — is true of one agent and false of two, which is to say false in the only situation this
-    library exists for.
-
-    So attribution is now graded by the evidence actually in hand:
-
-      DECLARED   the tool named the path it would write (Edit/Write). That path moving IS this
-                 session's doing, and it is reported and delivered exactly as before.
-      OBSERVED   a shell or MCP call, and something in another agent's region moved during it. If
-                 that agent was ACTIVE in the same window — its claim renewed inside it — the far
-                 likelier author is the agent that declared the region and is working in it, so the
-                 writer gets a hedged note and THE HOLDER IS TOLD NOTHING. A false accusation
-                 delivered to a victim is worse than silence: it is the one channel built to tell
-                 them the truth.
-      Otherwise it is still not certain, but no other author is known, so it is reported both ways
-      in hedged terms rather than as a proven trespass.
-    """
-    memo = _recall(SNAP_DIR, session, repo)
-    if not memo:
-        return []
-    _forget(SNAP_DIR, session, repo)
-    try:
-        memo_obj = json.loads(memo)
-    except (json.JSONDecodeError, ValueError):
-        return []
-    # A memo written before the wrapper existed is the bare snapshot itself.
-    before = memo_obj.get("snap", memo_obj) if isinstance(memo_obj, dict) else memo_obj
-
-    after = witness.snapshot(repo)
-    written = witness.written_between(repo, before, after)
-    if not written:
-        return []                                   # it read. It cost nobody anything.
-
-    written = [scope.canon(os.path.join(repo, p)) for p in written]
-    scope.renew(session)
-
-    notes = []
-    if bad := scope.violations(session, written):
-        head_moved = before.get("HEAD") != after.get("HEAD")
-        target = scope.canon(declared) if declared else None
-        ours = [v for v in bad if v["path"] == target]
-        unknown = [v for v in bad if v["path"] != target]
-
-        if ours:
-            notes.append(format_violation(repo, ours, head_moved=head_moved))
-            for victim, paths in _by_victim(ours).items():
-                post(victim, repo, format_intrusion(repo, session, paths, head_moved))
-        if unknown:
-            # Told to the ONE party that knows the answer, and to nobody else. The witness cannot
-            # name an author here, so it does not name one — not "probably the owner", not "probably
-            # you". The agent reading this knows whether it wrote, and the channel exists for it to
-            # say so.
-            notes.append(format_unattributed(repo, unknown, head_moved=head_moved))
-    if scope.declared(session) and (loose := scope.stray(session, written)):
-        notes.append(
-            "transponder: you wrote outside your declared scope, into a region nobody has claimed:\n"
-            + "\n".join(f"  {_rel(repo, p)}" for p in loose[:8])
-            + "\nNobody was hurt — but the next agent cannot see that this is yours. Declare it: "
-              "extend_scope(repo, [...]).")
-    remember_head(session, repo, env.git_head(repo))
-    return notes
-
-
-def format_unattributed(repo: str, bad: list[dict], head_moved: bool = False) -> str:
-    """A region you do not hold changed while your call ran, and nobody knows who did it.
-
-    Two wordings were tried here first and both were guesses wearing an observation's clothes. "You
-    just wrote inside another agent's reserved region" was fiction the first time two agents ran at
-    once — a holder appending to its own declared file every ten seconds, a passer-by whose only
-    crime was a read loop long enough to span a tick, four false accusations to each party. Grading
-    it by whether the owner had recently renewed was no better: renewal proves an agent was AWAKE,
-    never that it touched a file, and "nobody else was awake, so it was probably you" is the same
-    inference with less behind it.
-
-    What is known is the whole of what is said. The agent reading this is the only party in the
-    system that knows whether it wrote, so it is the only party told — and it has a channel to say
-    so if it did.
-    """
-    out = ["A REGION YOU DO NOT HOLD CHANGED WHILE YOUR CALL WAS RUNNING.",
-           f"  repo: {repo}", ""]
-    for v in bad:
-        out.append(f"  {_rel(repo, v['path'])}")
-        out.append(f"     belongs to agent {v['victim']} ({', '.join(v['scope'])})"
-                   + (f" — {v['intent']}" if v["intent"] else ""))
-    out += [
-        "",
-        "The witness saw the tree move; it cannot see who moved it. Your command may have done this,",
-        "or the owner may have been working in their own region at the same moment — from outside,",
-        "those are the same picture. So nothing has been said to them, and no one is being accused.",
-        "",
-        "YOU know which it was:",
-        "  * if it was you — stop writing here, leave it exactly as it stands, and tell them:",
-        "        send_message(repo, session_id, 'I wrote <paths>; sorry, stopping', to='<agent>')",
-        "    then declare the scope you actually needed. Do not restore their work by guess.",
-        "  * if it was not you — there is nothing to do. This note is the whole of it.",
-    ]
-    if head_moved:
-        out += [
-            "",
-            "HISTORY MOVED during this call, and the new commit contains the paths above — the",
-            "founding incident of this library is `git add -A` sweeping a neighbour's half-finished",
-            "work into somebody else's commit. IF THAT COMMIT IS YOURS, it is the one violation that",
-            "is cleanly recoverable, and recovering it now is cheap:",
-            "        git reset --soft HEAD~1     # un-commit, keep the tree",
-            "        git restore --staged <their paths>",
-            "    then stage YOUR paths by name, never `-A`.",
-            "IF IT IS NOT YOURS, do NOT run that — you would be undoing somebody else's commit on a",
-            "guess, which is the mistake this message exists to avoid making on your behalf.",
-        ]
-    return "\n".join(out)
-
-
-def format_violation(repo: str, bad: list[dict], head_moved: bool) -> str:
-    """A write landed in another agent's declared region. It was not prevented — nothing is — so
-    the least both parties are owed is the truth, immediately, with the remedy attached."""
-    out = ["SCOPE VIOLATION — you just wrote inside another agent's reserved region.",
-           f"  repo: {repo}", ""]
-    for v in bad:
-        out.append(f"  {_rel(repo, v['path'])}")
-        out.append(f"     belongs to agent {v['victim']} ({', '.join(v['scope'])})"
-                   + (f" — {v['intent']}" if v["intent"] else ""))
-    out += [
-        "",
-        "You are not in trouble; you are being told before it becomes a mangled rebase.",
-        "THEY HAVE BEEN TOLD TOO — a note is waiting for them, naming you and these paths.",
-        "",
-        "STOP, and do NOT try to put their work back. You cannot: what you overwrote may never",
-        "have been committed, so nothing you can read tells you what it was, and restoring it by",
-        "guess is a second write into a region that is still not yours. They know what they were",
-        "doing. Leaving it for them is the fix, not laziness.",
-        "  1. Stop writing here. Leave the file exactly as it is now.",
-        "  2. `git status` / `git diff` — look, so you can say what you did if asked.",
-    ]
-    if head_moved:
-        out += [
-            "  3. YOU COMMITTED THEIR WORK, and that one IS yours to undo — it is your commit, and",
-            "     it is cleanly recoverable. Do it now, before anything lands on top:",
-            "         git reset --soft HEAD~1     # un-commit, keep the tree",
-            "         git restore --staged <their paths>",
-            "     A `git add -A` sweeps up every dirty file in the checkout, including the ones",
-            "     another agent is halfway through. Stage YOUR paths by name, never `-A`.",
-        ]
-    else:
-        out.append("  3. Declare the scope you actually needed, and carry on inside it.")
-    return "\n".join(out)
-
-
-def _by_victim(bad: list[dict]) -> dict[str, list[str]]:
-    out: dict[str, list[str]] = {}
-    for v in bad:
-        out.setdefault(v["victim"], []).append(v["path"])
-    return out
-
-
-def format_intrusion(repo: str, offender: str, paths: list[str], head_moved: bool) -> str:
-    """What the VICTIM is told, on its next tool call. Deliberately not a mirror of the offender's
-    message: that one says stop, this one says look. Only this agent knows what its work was, so
-    only it can decide whether what is on disk now is a loss, a merge, or fine.
-
-    It is sent ONLY when the write can be attributed — the tool named the path, or nobody else was
-    working here. This message is the one thing the victim acts on, and telling it "X wrote here"
-    when all we know is "this changed while X was running" spends the credibility of every note
-    after it. The unattributable case is told to the passer-by and to nobody else.
-    """
-    out = ["SOMEONE WROTE IN YOUR REGION — while you were working, another agent wrote here:",
-           f"  repo: {repo}", ""]
-    for p in paths[:8]:
-        out.append(f"  {_rel(repo, p)}")
-    out += [
-        "",
-        f"  by agent {offender}, who has been told to stop and to leave it for you.",
-        "",
-        "LOOK BEFORE YOU CARRY ON. Your picture of these files is from before that write, so an",
-        "edit made against what you remember can overwrite it a second time — this time by you.",
-        "  1. `git diff` / re-read the files above. Decide: keep theirs, merge, or restore yours.",
-        "  2. Only you know what was half-finished here. Nobody else can make that call.",
-    ]
-    if head_moved:
-        out.append("  3. HISTORY MOVED as well — commits you remember may have been replaced. "
-                   "Re-read the log before reasoning about it.")
-    return "\n".join(out)
-
+# The witness stood here: watch() took a fingerprint of every checkout on the map before a tool
+# call, settle() diffed it after, and anything that had moved inside somebody else's region was
+# reported. It is deleted, and the reason is not that it was expensive — it was that it could not
+# do the one thing it claimed. A fingerprint proves the TREE MOVED. It cannot prove who moved it,
+# and with two agents running that is not a corner case, it is the normal case: a holder appending
+# to its own declared file and a passer-by whose call merely lasted longer than the gap between
+# two of those appends produce the same picture from outside. It said so out loud four times in one
+# afternoon, naming a reader as the author of writes it never made, and telling the holder its work
+# had been trampled by an agent that never wrote a byte.
+#
+# So detection is gone, and nothing replaces it. The agreement happens BEFORE the work, in
+# declare_work(), which is the only moment anybody actually knows what they are about to do. An
+# agent that suspects something changed under it asks the channel and can write to whoever it finds
+# there. That is weaker, and it is honest, and it does not manufacture facts.
 
 # --- the one exception: the Stop boundary ----------------------------------------------------------
 

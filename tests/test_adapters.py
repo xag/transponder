@@ -39,26 +39,6 @@ def claude_edit(repo, session, path="a.txt"):
                              "cwd": repo, "session_id": session})
 
 
-def claude_write(repo, session, path="a.txt", text="edited\n"):
-    """A whole Edit, the way the harness runs one: PreToolUse, THE ACTUAL WRITE, PostToolUse.
-
-    Edit used to be judged before it ran, by a warning the harness could not deliver in time. It is
-    now witnessed like a shell — which means a test that only fires PreToolUse is testing the half
-    where, by design, nothing is said. The write has to really happen or settle() has nothing to
-    see: the whole mechanism is a fingerprint that MOVED.
-    """
-    payload = {"tool_name": "Edit", "tool_input": {"file_path": os.path.join(repo, path)},
-               "cwd": repo, "session_id": session}
-    pre = run_hook(CLAUDE, {**payload, "hook_event_name": "PreToolUse"})
-    assert pre.returncode == 0, f"a PreToolUse refused an Edit: {pre.stderr}"
-    target = os.path.join(repo, path)
-    os.makedirs(os.path.dirname(target), exist_ok=True)
-    with open(target, "a", encoding="utf-8") as f:
-        f.write(text)
-    post = run_hook(CLAUDE, {**payload, "hook_event_name": "PostToolUse"})
-    post.pre_stdout = pre.stdout
-    return post
-
 
 def claude_shell(repo, session, command, tool="Bash"):
     """A shell, run the way the harness runs one: PreToolUse, the command, PostToolUse. Nothing
@@ -178,28 +158,6 @@ def test_a_missing_flight_recorder_costs_the_tape_not_the_courier(repo, tmp_path
     assert "NOT THE ONLY AGENT" in res.stdout, (
         "with no recorder installed, the courier went quiet entirely")
 
-
-def test_a_half_wired_install_is_a_blind_witness_and_says_so(repo):
-    """PreToolUse without PostToolUse = snapshots that are never settled = writes that are never
-    observed. The old lock DEGRADED here; the courier cannot degrade, but a witness everyone
-    believes is watching, and which is not, is the vacuously-green failure — so it says so, once.
-
-    The declare is not scaffolding: the witness watches DECLARED checkouts now, so a repo nobody
-    claimed is not watched and has nothing to be blind about. Being blind is a property of a region
-    someone asked to have protected."""
-    scope.declare(repo, "A", ["a.txt"], "working")
-
-    def pre_only(session, command):
-        return run_hook(CLAUDE, {"hook_event_name": "PreToolUse", "tool_name": "Bash",
-                                 "tool_input": {"command": command}, "cwd": repo,
-                                 "session_id": session})
-
-    assert pre_only("A", "cat a.txt").returncode == 0        # 1st: takes the before-picture
-    res = pre_only("A", "cat a.txt")                         # 2nd: the picture was never settled
-    assert res.returncode == 0
-    assert "not wired" in res.stdout, "a blind witness must say it is blind"
-    res = pre_only("A", "cat a.txt")                         # 3rd: once means once
-    assert "not wired" not in res.stdout, "a warning printed forever is a warning nobody reads"
 
 
 def test_session_start_reports_drift(repo):
