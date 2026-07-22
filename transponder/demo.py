@@ -3,7 +3,7 @@
 This exists because the library's central claim cannot be checked from inside one session. An agent
 cannot see another agent; that is the whole premise. So every internal signal can look healthy while
 the thing does nothing — which is exactly what happened: for the whole life of v2 the courier wrote
-its notes to a debug log, the map was accurate, the witness was watching, the tapes were faithful,
+its notes to a debug log, the map was accurate, the tapes were faithful,
 and no agent was ever told anything. It took two sessions deliberately colliding to notice.
 
 So this is a two-party test, and it needs a human for thirty seconds:
@@ -77,8 +77,8 @@ def _git(repo: str, *args: str) -> None:
 
 
 def make_checkout(path: str) -> str:
-    """A real git repo, because the witness reads `git status --porcelain` and a directory that is
-    not a checkout is invisible to it — the demo would 'pass' by saying nothing at all."""
+    """A real git repo: claims are anchored to a checkout, and a directory that is not one cannot
+    be declared against."""
     os.makedirs(path, exist_ok=True)
     _git(path, "init", "-q")
     with open(os.path.join(path, "index.part"), "w", encoding="utf-8") as f:
@@ -102,16 +102,13 @@ def preflight() -> list[str]:
 
 
 def report(path: str, mine: list[str], mail: list[str], chatter: list[str]) -> None:
-    """What this side saw. The point of the demo is to compare it with what the other session was
-    TOLD: a violation the witness recorded but nobody delivered is the exact failure this library
-    shipped with, and only two accounts of one event can catch it.
+    """What this side saw — and it is now a thin report, on purpose.
 
-    The FILE alone is not enough evidence, and the first run of this demo proved it: the other
-    session wrote, was told, and politely reverted — so the file came back clean and this report
-    announced that nothing had happened. A collision that was witnessed twice, reported to both
-    parties, and recorded on the tape, summarised as silence. So the mail is the primary evidence
-    now and the file is corroboration: mail survives an undo, because being written into is a fact
-    about the past and the file only ever shows the present.
+    Nothing detects writes any more. If another agent wrote here, no alarm fired for either of us;
+    the only things this side can honestly report are what somebody SAID to it, and what is in the
+    file that this process did not put there. Those are different kinds of evidence and the report
+    keeps them apart, because the previous version inferred a story from having both and invented an
+    event that never happened.
     """
     try:
         with open(path, encoding="utf-8") as f:
@@ -130,17 +127,8 @@ def report(path: str, mine: list[str], mail: list[str], chatter: list[str]) -> N
             for line in note.splitlines():
                 print(f"    {line}")
             print()
-        print("  That is the victim's half of the protocol, and it is the half that was missing:")
-        print("  the agent whose region was written is now told, on its own next call.")
-        if not left:
-            # This used to read "the write was undone" — an inference from (mail exists) + (file
-            # clean), and it invented an event the first time the mail itself was wrong: four false
-            # violation notes, no foreign line, and a report confidently narrating a write and a
-            # revert that never happened. A reporter that fills gaps with plausible story is the
-            # same failure as a witness that names an author it cannot see.
-            print("\n  The file has nothing in it but my own rows. Either the write was undone, or")
-            print("  the note was about a change that was not theirs — this report cannot tell the")
-            print("  two apart, and will not guess. `python -m transponder.replay` has the tape.")
+        print("  Somebody addressed this agent directly — a conflict notice, or another agent")
+        print("  talking to it. That is the channel doing its job.")
     if chatter:
         print(f"  SOMEBODY TALKED TO THE ROOM — {len(chatter)} channel message(s) I had to ASK for:\n")
         for note in chatter:
@@ -148,24 +136,22 @@ def report(path: str, mine: list[str], mail: list[str], chatter: list[str]) -> N
                 print(f"    {line}")
             print()
         print("  Nothing pushed these to me; I pulled them, which is the whole line between a")
-        print("  courier and a feed. An agent saying what it is doing is the information the map")
-        print("  cannot carry — it only ever knew WHERE I was writing, never what was coming.")
+        print("  courier and a feed. An agent that wants the room has to ask for it.")
     if left:
         print(f"  ANOTHER AGENT WROTE IN MY REGION — {sum(left.values())} line(s) I did not write:")
         for line in list(left)[:8]:
             print(f"    {line.rstrip()}")
-        print("\n  That session should have been told, on its own screen, in this order:")
-        print("    1. THIS CHECKOUT IS SHARED …  (before it wrote — once per session)")
-        print("    2. SCOPE VIOLATION — you just wrote inside another agent's reserved region")
-        print("       (after the write landed, with the three-step remedy)")
-        print("\n  If it saw NEITHER, the courier is not reaching agents — which is the failure")
-        print("  this demo exists to catch, and it looks identical to everything working.")
+        print("\n  NOBODY WAS TOLD — not them, not me. There is no detection, by design, and this")
+        print("  report only knows because it kept a list of its own lines. What SHOULD have")
+        print("  happened is that the other agent called channel() first, saw this region was")
+        print("  declared, and either took other work or said something. Whether it did is on its")
+        print("  screen and not mine: ask it what it saw before concluding anything.")
     elif not mail and not chatter:
         print("  Nothing reached me: no mail, no channel traffic, and no lines in the file that I")
         print("  did not write.")
-        print("  Either no other session tried, or it was pointed at a different path — or the")
-        print("  courier is silent again. Those look the same from here, which is the point:")
-        print("  check the tape (python -m transponder.replay) before concluding anything.")
+        print("  Either nobody tried, or somebody looked, saw the claim and went elsewhere without")
+        print("  saying so — which is a success this report cannot distinguish from an empty room.")
+        print("  The tape (python -m transponder.replay) shows who asked.")
     if lost:
         print(f"\n  {sum(lost.values())} line(s) of MINE are gone — the other write destroyed them.")
         print("  Worth sitting with: the report is not a recovery. Uncommitted bytes do not come")
