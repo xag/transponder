@@ -2,7 +2,7 @@
   {
     "path": "a-channel-they-can-repurpose",
     "kind": "decision",
-    "digest": "9500c25c44df"
+    "digest": "f7dfb30a9be8"
   },
   {
     "path": "a-channel-they-can-repurpose/alt-no-channel-file-an-issue",
@@ -57,7 +57,7 @@
   {
     "path": "agree-before-the-work",
     "kind": "decision",
-    "digest": "2a19e554911a"
+    "digest": "695bda85c47d"
   },
   {
     "path": "agree-before-the-work/alt-block-until-green",
@@ -217,7 +217,7 @@
   {
     "path": "inform-peers-never-police-an-agents-internals",
     "kind": "decision",
-    "digest": "6c9d5bcf41d9"
+    "digest": "9cc59ba180fe"
   },
   {
     "path": "inform-peers-never-police-an-agents-internals/alt-actor-ids-for-subagents",
@@ -232,7 +232,7 @@
   {
     "path": "information-not-exclusion",
     "kind": "decision",
-    "digest": "9b985b966e26"
+    "digest": "3afea7ee128f"
   },
   {
     "path": "information-not-exclusion/alt-demote-stop-ask-to-a-note",
@@ -312,7 +312,7 @@
   {
     "path": "never-hand-a-child-our-stdin",
     "kind": "decision",
-    "digest": "999692be14ae"
+    "digest": "e083d8f52460"
   },
   {
     "path": "never-hand-a-child-our-stdin/alt-cache-the-tree-state",
@@ -422,7 +422,7 @@
   {
     "path": "tell-both-parties",
     "kind": "decision",
-    "digest": "417a1e243305"
+    "digest": "8e0484513438"
   },
   {
     "path": "tell-both-parties/alt-mirror-one-message-to-both",
@@ -477,7 +477,7 @@
   {
     "path": "the-map-is-the-watch-list",
     "kind": "decision",
-    "digest": "52b1cd2126ba"
+    "digest": "03b4f6231022"
   },
   {
     "path": "the-map-is-the-watch-list/alt-parse-the-shell-command",

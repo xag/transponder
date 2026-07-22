@@ -486,7 +486,7 @@ DECISIONS = [
     # — but it was reached on a mechanism that did not exist and was only made real that day. The
     # correction, and the rule that follows from it, are in the-courier-speaks-where-it-can-be-heard.
     Node(id="information-not-exclusion", kind="decision",
-         meta={"amended": "9b985b966e26 tightened under the 600-word budget; every claim kept"},
+         meta={"amended": "3afea7ee128f tightened again, at 600/600 with no headroom left; every claim kept"},
          name="Scratch the mutex entirely: nothing is ever refused, and information is the model",
          payload={"rationale":
                   "The user's sentence, which the first trial build implemented only by half: 'we "
@@ -494,35 +494,34 @@ DECISIONS = [
                   "collaboratively prevent breaking each other's work.' The build kept four kinds "
                   "of refusal anyway — the v1 mutex for undeclared sessions, a teaching-refusal, a "
                   "scope gate on declared writes, a v1-lock check on scoped agents — arguing "
-                  "silence must stay safe for agents who never heard of the protocol. "
-                  "That argument had a flaw the user exposed by hitting it: THE COURIER REACHES "
-                  "NON-PARTICIPANTS TOO. The hook prints into every agent's context on every tool "
-                  "call, so an undeclared agent can be TOLD another is mid-change without "
-                  "being REFUSED anything. Making the cooperation bet for declared agents while "
-                  "refusing it for undeclared ones was incoherent — same bet, make it everywhere. "
-                  "And the race that interrupted the trial's first pilot declaration was the "
-                  "kept-mutex biting, on cue.\n\n"
+                  "silence must stay safe for agents who never heard of the protocol. That argument "
+                  "had a flaw the user exposed by hitting it: THE COURIER REACHES NON-PARTICIPANTS "
+                  "TOO. The hook prints into every agent's context on every tool call, so an "
+                  "undeclared agent can be TOLD another is mid-change without being REFUSED "
+                  "anything. Making the cooperation bet for declared agents while refusing it for "
+                  "undeclared ones was incoherent — same bet, make it everywhere. And the race that "
+                  "interrupted the trial's first pilot declaration was the kept-mutex biting, on "
+                  "cue.\n\n"
                   "v1 is deleted, not superseded-in-place: the lease-lock, the pessimistic hold, "
                   "the tickets and the waiter, the takeover handoff, the Cursor adapter, and every "
                   "test that pinned refusal behaviour. What remains never refuses: the claims map "
-                  "(scope.py — a conflicting declare is not RECORDED, the map stays coherent; no "
-                  "call is blocked), the witness (witness.py — what happened, violations "
-                  "named to their author, remedy attached), the courier (hooks — the "
-                  "shared-checkout intro, the pre-write heads-up), and the drift check. Deadlock "
-                  "ceases by construction — nothing blocks, nothing cycles — and §5's "
-                  "extend-deadlock apparatus evaporates.\n\n"
+                  "(a conflicting declare is not RECORDED, the map stays coherent; no call is "
+                  "blocked), the witness (what happened, violations named to their author, remedy "
+                  "attached), the courier (the shared-checkout intro, the pre-write heads-up), and "
+                  "the drift check. Deadlock ceases by construction — nothing blocks, nothing "
+                  "cycles — and §5's extend-deadlock apparatus evaporates.\n\n"
                   "ONE deliberate exception, flagged and accepted: the Stop boundary may block a "
-                  "DEPARTING session's handback, once, to ask commit/ignore/stash of a dirty "
-                  "tree. It refuses no other agent anything; demoted to a note it would be prose "
-                  "that cannot fire.\n\n"
-                  "Knowingly given up: exclusion. Two agents CAN now write one region; the "
-                  "witness names it after the fact. Every failure in this library's recorded "
-                  "history was an agent that did not know another agent was there — ignorance, not "
-                  "malice — and information cures ignorance at a fraction of the price of a mutex "
-                  "that took the machine down four times (#4, #7, #10, #11) and whose only two "
-                  "genuine collisions-avoided were between sessions in DIFFERENT directories. "
-                  "Deterrence is NOT the mechanism (no memory across "
-                  "sessions, no reputation, no future to lose): visibility plus a witness is."},
+                  "DEPARTING session's handback, once, to ask commit/ignore/stash of a dirty tree. "
+                  "It refuses no other agent anything; demoted to a note it would be prose that "
+                  "cannot fire.\n\n"
+                  "Knowingly given up: exclusion. Two agents CAN now write one region; the witness "
+                  "names it after the fact. Every failure in this library's recorded history was an "
+                  "agent that did not know another was there — ignorance, not malice — and "
+                  "information cures ignorance at a fraction of the price of a mutex that took the "
+                  "machine down four times (#4, #7, #10, #11) and whose only two genuine "
+                  "collisions-avoided were between sessions in DIFFERENT directories. Deterrence is "
+                  "NOT the mechanism (no memory across sessions, no reputation, no future to lose): "
+                  "visibility plus a witness is."},
          links={"supersedes": ["hold-the-lock-through-the-unknown", "a-refusal-must-be-actionable",
                                "waiting-is-a-subscription", "the-ticket-must-survive-the-shell",
                                "mcp-is-watched-never-gated", "liveness-lease-and-pid",
@@ -666,36 +665,35 @@ DECISIONS = [
          ]),
 
     Node(id="never-hand-a-child-our-stdin", kind="decision",
+         meta={"amended": "e083d8f52460 tightened under the 600-word budget; every claim kept"},
          name="A subprocess never inherits this process's stdin — inside the MCP server, stdin is "
               "the client's pipe",
          payload={"rationale":
                   "Found by using the thing as intended: two agents, one checkout, one file. Neither "
-                  "agent ever reached the file. Both spent thirty minutes failing to complete their "
-                  "FIRST `scopes()` call and were killed still trying — obeying the protocol to the "
-                  "end, which is the only reason this was visible as a channel failure rather than "
-                  "as two agents clobbering each other.\n\n"
+                  "reached the file. Both spent thirty minutes failing to finish their FIRST "
+                  "`scopes()` call and were killed still trying — obeying the protocol to the end, "
+                  "which is the only reason this read as a channel failure rather than as two "
+                  "agents clobbering each other.\n\n"
                   "`env._run` ran git with `capture_output=True` and INHERITED STDIN. Inside the MCP "
                   "server this process's stdin IS the client's stdio pipe; a child that inherits it "
                   "does not exit until that pipe does, so `communicate()` blocks joining its reader "
-                  "threads until the 30s timeout. `_fmt_scopes` makes two git calls, so `scopes()` "
-                  "cost 60.06s — measured against the real server driven over raw stdio, not "
-                  "inferred. And the blocking call runs ON THE EVENT-LOOP THREAD, so FastMCP "
-                  "serialises every request and the server is deaf for the whole 60s: with three "
-                  "actors calling it, one request waited 1800s and was aborted without ever being "
-                  "served. A 60s bug became a dead channel.\n\n"
-                  "The latency is not the finding. THE TIMEOUT RETURNS None, and `_run`'s contract "
-                  "cannot tell 'git failed' from 'git never answered' — so `git_head` reported `?` "
-                  "and `git_dirty` reported a CLEAN TREE. The map told every reader the checkout was "
+                  "threads until the 30s timeout. Two git calls per `scopes()` = 60.06s, measured "
+                  "against the real server over raw stdio, not inferred. And it runs ON THE "
+                  "EVENT-LOOP THREAD, so FastMCP serialises everything and the server is deaf "
+                  "throughout: with three actors, one request waited 1800s and was aborted "
+                  "unserved. A 60s bug became a dead channel.\n\n"
+                  "The latency is not the finding. THE TIMEOUT RETURNS None, and `_run` cannot tell "
+                  "'git failed' from 'git never answered' — so `git_head` reported `?` and "
+                  "`git_dirty` reported a CLEAN TREE. The map told every reader the checkout was "
                   "clean while it was dirty, `release_scope` saw nothing to object to, and the drift "
                   "check lost its baseline. A witness that fails OPEN and SILENT is the one failure "
-                  "this library cannot have, and it had it on every MCP call for as long as the "
-                  "server has existed.\n\n"
-                  "`stdin=subprocess.DEVNULL`: 60.06s -> 0.08s, and the server now answers `tree "
-                  "DIRTY, 1 change(s), head 2be1c29055fc` where it had answered `tree clean, head "
-                  "?`. The hooks were never affected — they run git in short-lived processes with no "
-                  "stdio transport — which is exactly why the courier and the witness worked "
-                  "throughout while the negotiation channel was dead, and why nothing in the test "
-                  "suite noticed.\n\n"
+                  "this library cannot have, and it had it on every MCP call since the server "
+                  "existed.\n\n"
+                  "`stdin=subprocess.DEVNULL`: 60.06s -> 0.08s, and it now answers `tree DIRTY, 1 "
+                  "change(s)` where it answered `tree clean, head ?`. The hooks were never affected "
+                  "— short-lived processes, no stdio transport — which is why the courier and the "
+                  "witness worked throughout while the negotiation channel was dead, and why no "
+                  "test noticed.\n\n"
                   "RESIDUAL, stated rather than fixed: `_run` still collapses timeout into None, so "
                   "any future git call slow enough to time out still reads as a clean tree. The "
                   "stdin bug made that reachable on every call; closing it makes it rare, not "
@@ -777,7 +775,13 @@ DECISIONS = [
                                   "inception, bought for one grade of confidence"}),
          ]),
 
+    # ONE FALSE CLAUSE, left standing: "the map could only say WHERE". A claim has carried `intent`
+    # since the first version and `doing` now, so the map always said what. Same error as
+    # a-channel-they-can-repurpose, and it survived the sweep that caught that one because the sweep
+    # grepped "can only say WHERE" and this reads "could". A sweep is only as good as its pattern —
+    # which is the argument for `--brief` and for reading entries, not grepping them.
     Node(id="agree-before-the-work", kind="decision",
+         meta={"amended": "695bda85c47d tightened under the 600-word budget; every claim kept"},
          name="Delete detection entirely: ask, declare, wait for the green light, finish",
          links={"supersedes": ["nobody-is-named-unless-the-tool-named-the-file"]},
          payload={"rationale":
@@ -790,26 +794,25 @@ DECISIONS = [
                   "fact the agent already had. A detector that can only tell you what you already "
                   "know is not weakened, it is an elaborate way of saying nothing, and it cost a "
                   "git fingerprint of every claimed checkout on every tool call.\n\n"
-                  "So the weight moves to the only moment when anybody actually knows what is about "
-                  "to happen: BEFORE. `channel()` asks what is going on, narrowed to the path you "
-                  "mean to touch. `declare_work(paths, doing, minutes)` returns a GREEN LIGHT or "
-                  "names who holds the overlap, what they are doing, when they expect to be free, "
-                  "and what is open right now. Not clear means three named choices — other work, "
-                  "your human, or wait — and waiting is a background process that exits when the "
-                  "region frees, because a harness noticing a background task end is the only thing "
-                  "that can wake an agent. `finish_work()` the moment you are done.\n\n"
+                  "So the weight moves to the only moment anybody knows what is about to happen: "
+                  "BEFORE. `channel()` asks what is going on, narrowed to the path you mean to "
+                  "touch. `declare_work(paths, doing, minutes)` returns a GREEN LIGHT, or names who "
+                  "holds the overlap, what they are doing, when they expect to be free, and what is "
+                  "open. Not clear means three named choices — other work, your human, or wait — "
+                  "and waiting is a background process that exits when the region frees, because a "
+                  "harness noticing a background task end is the only thing that can wake an agent. "
+                  "`finish_work()` the moment you are done.\n\n"
                   "`doing` and `minutes` are why this is not the old map with better manners: the "
                   "map could only say WHERE, and what changes another agent's code is knowing what "
                   "is COMING, and when to come back.\n\n"
                   "The instruction IS the mechanism now, and nothing sits behind it to catch what "
                   "it fails to convey. If agents do not ask, this is decoration.\n\n"
-                  "KNOWINGLY GIVEN UP, and this is the biggest thing this project has ever put "
-                  "down: a write into a declared region is lost work that NEITHER party is told "
-                  "about. Worse, the instrument that would have shown the design failing went with "
-                  "it — §8's kill conditions used to include violation reports firing, and now a "
-                  "collision nobody notices leaves no trace anywhere. If this fails, it fails "
-                  "silently. That is written into SPEC §4 and §8 rather than left for someone to "
-                  "discover."},
+                  "KNOWINGLY GIVEN UP, the biggest thing this project has put down: a write into a "
+                  "declared region is lost work NEITHER party is told about. Worse, the instrument "
+                  "that would have shown the design failing went with it — §8's kill conditions "
+                  "included violation reports firing, and a collision nobody notices now leaves no "
+                  "trace anywhere. If this fails, it fails silently. Written into SPEC §4 and §8 "
+                  "rather than left for someone to discover."},
          children=[
              Node(id="alt-keep-the-narrowed-witness", kind="alternative",
                   name="Keep the honest version: report 'a region you do not hold changed while "
@@ -887,36 +890,34 @@ DECISIONS = [
          ]),
 
     Node(id="the-map-is-the-watch-list", kind="decision",
+         meta={"amended": "03b4f6231022 tightened under the 600-word budget; every claim kept"},
          name="The witness watches the checkouts that were DECLARED — never the folder a session "
               "happens to be sitting in",
          payload={"rationale":
-                  "`cwd` was the last guess in the library, and it was invisible because it never "
-                  "looked like one: 'the folder you are sitting in is probably the folder you are "
-                  "writing to'. A real agent broke it within a minute of being asked to try — it "
-                  "sat in the transponder checkout and ran `printf >> file` into a demo checkout. "
-                  "The witness fingerprinted its own cwd, correctly saw nothing move there, and "
-                  "said nothing while the write landed in somebody's declared region. The same "
-                  "agent's Edit, one minute later, was caught perfectly: a writing tool names its "
-                  "file, so that repo was a FACT.\n\n"
-                  "This is observe-do-not-predict with a different hat on, and it survived four "
-                  "rounds of that argument (#4, #7, #8) only because it had never been the thing "
-                  "that broke.\n\n"
-                  "The first fix proposed here was to watch cwd AND every claimed checkout. The "
-                  "user rejected it as hardcoding the instance, and that was right: it keeps the "
-                  "prediction and pays for it on every shell call, fixing the case observed and "
-                  "leaving the mechanism intact for the next one. So the guess is REMOVED. Two "
-                  "sources remain and both are facts: the repo owning a path the harness declared, "
-                  "and the checkouts on the map. A violation exists only against a claim, so the "
-                  "set worth watching is exactly the set somebody declared — and the map already "
-                  "knew it.\n\n"
-                  "GIVEN UP, deliberately: a checkout nobody declared is not watched at all. Drift, "
-                  "the blind-witness warning, the Stop handback and the intro all key on the map "
-                  "now, so a session that declares nothing gets no service. That is the correct "
-                  "incentive and a real narrowing, and it is why the protocol had to be said louder "
-                  "— declare the files and folders you INTEND TO EDIT, in the checkout you write TO. "
-                  "The intro introduces the MACHINE rather than one cwd-chosen checkout, which also "
-                  "cures a case nobody had noticed: an agent working across a lib and its client was "
-                  "told about neither.\n\n"
+                  "`cwd` was the last guess in the library, invisible because it never looked like "
+                  "one: 'the folder you are sitting in is probably the folder you are writing to'. "
+                  "A real agent broke it within a minute of being asked to try — it sat in the "
+                  "transponder checkout and ran `printf >> file` into a demo checkout. The witness "
+                  "fingerprinted its own cwd, correctly saw nothing move there, and said nothing "
+                  "while the write landed in somebody's declared region. The same agent's Edit, a "
+                  "minute later, was caught perfectly: a writing tool names its file, so that repo "
+                  "was a FACT.\n\n"
+                  "This is observe-do-not-predict in a different hat, and it survived four rounds "
+                  "of that argument (#4, #7, #8) only because it had never been the thing that "
+                  "broke.\n\n"
+                  "The first fix proposed was to watch cwd AND every claimed checkout. The user "
+                  "rejected it as hardcoding the instance, rightly: it keeps the prediction, pays "
+                  "for it on every shell call, and leaves the mechanism intact for the next case. "
+                  "So the guess is REMOVED. Two sources remain, both facts: the repo owning a path "
+                  "the harness declared, and the checkouts on the map. A violation exists only "
+                  "against a claim, so the set worth watching is exactly the set somebody "
+                  "declared.\n\n"
+                  "GIVEN UP deliberately: a checkout nobody declared is not watched at all. Drift, "
+                  "the blind-witness warning, the Stop handback and the intro all key on the map, "
+                  "so a session that declares nothing gets no service — the correct incentive and a "
+                  "real narrowing, and why the protocol had to be said louder. The intro introduces "
+                  "the MACHINE rather than one cwd-chosen checkout, which cures a case nobody had "
+                  "noticed: an agent working across a lib and its client was told about neither.\n\n"
                   "KNOWN BOOTSTRAP GAP, stated rather than hidden: the intro fires only when "
                   "somebody holds a claim. On a machine where no one has ever declared, no one is "
                   "ever invited to."},
@@ -1037,6 +1038,7 @@ DECISIONS = [
          ]),
 
     Node(id="tell-both-parties", kind="decision",
+         meta={"amended": "8e0484513438 tightened under the 600-word budget; every claim kept"},
          name="The agent whose region was written is told too — and the offender is not asked to "
               "repair what it never saw",
          payload={"rationale":
@@ -1045,30 +1047,30 @@ DECISIONS = [
                   "just been overwritten was addressed by nothing.\n\n"
                   "So the remedy asked the wrong party. 'Put back what was theirs' asks an agent to "
                   "reconstruct bytes it never saw — the work may never have been committed, so "
-                  "nothing readable says what was there. That is a guess, in a library whose whole "
-                  "design is the refusal to guess (observe-do-not-predict). And obeying it means "
-                  "writing into a region that is still not yours: a real session followed the "
-                  "remedy, reverted, and collected a SECOND violation for complying. An alarm that "
-                  "fires when you do as you are told is an alarm that gets ignored.\n\n"
-                  "Both parties are now addressed, and told DIFFERENT things. The offender: stop, "
+                  "nothing readable says what was there. A guess, in a library whose design is the "
+                  "refusal to guess (observe-do-not-predict). And obeying it means writing into a "
+                  "region still not yours: a real session followed the remedy, reverted, and "
+                  "collected a SECOND violation for complying. An alarm that fires when you do as "
+                  "you are told is an alarm that gets ignored.\n\n"
+                  "Both parties are addressed now, and told DIFFERENT things. The offender: stop, "
                   "leave it, they have been told. The victim, on its next tool call or its human's "
                   "next prompt: someone wrote here, LOOK before you carry on — your picture of "
                   "these files predates their write, so an edit against what you remember "
                   "overwrites it again, this time by you. Keep, merge or restore is a judgement "
-                  "only the victim can make. The single thing the offender is still told to undo is "
-                  "a commit that swept their work: that one is recoverable and genuinely its own.\n\n"
+                  "only the victim can make. The one thing the offender is still told to undo is a "
+                  "commit that swept their work: recoverable, and genuinely its own.\n\n"
                   "KNOWN LIMIT, accepted rather than hidden: the victim is not woken. Nothing can "
-                  "push into a running turn (waiting-is-a-subscription), so the note waits for its "
-                  "next hook. The window is bounded and cheap — a working victim fires a hook within "
-                  "seconds, and a parked one is reached at UserPromptSubmit BEFORE it acts. The one "
-                  "uncovered case is a victim whose very next call writes that same file, and that "
-                  "write goes into its own region: the one write nobody needs protecting from.\n\n"
+                  "push into a running turn (waiting-is-a-subscription), so the note waits for the "
+                  "next hook. Bounded and cheap — a working victim fires one within seconds, a "
+                  "parked one is reached at UserPromptSubmit BEFORE it acts. The one uncovered case "
+                  "is a victim whose very next call writes that same file, into its own region: the "
+                  "one write nobody needs protecting from.\n\n"
                   "The inbox also exposed an older bug it did not cause: _memo_path hashed whatever "
                   "repo spelling it was handed, and the callers disagree (repo_root gives git's "
                   "C:/..., repo_of a backslashed abspath). One checkout, several keys — so 'the "
                   "intro, once' was only as good as the key it was remembered under. Keyed on "
-                  "env.canonical() now, which is filesystem-is-the-namespace applying to a second "
-                  "store nobody had noticed was a namespace."},
+                  "env.canonical() now: filesystem-is-the-namespace applying to a second store "
+                  "nobody had noticed was a namespace."},
          children=[
              Node(id="alt-offender-restores-it", kind="alternative",
                   name="Keep asking the offender to put the work back",
@@ -1098,41 +1100,37 @@ DECISIONS = [
     # error propagated into four other places before the user caught it, which is the more useful
     # lesson — a rationale nobody checks gets quoted until it sounds true.
     Node(id="a-channel-they-can-repurpose", kind="decision",
+         meta={"amended": "f7dfb30a9be8 tightened under the 600-word budget; every claim kept"},
          name="An addressed message substrate — direct pushes, broadcast and channel are pull-only; "
               "a transponder, not a chatter phone",
          payload={"rationale":
                   "The map answers WHERE, plus one line of why. It cannot carry what an agent is "
-                  "actually doing, and that is the information the other agent needs most — two "
-                  "sessions in one checkout are not rivals, they are building one app. Knowing that "
-                  "a rewrite of the auth middleware is COMING changes how you write the module "
-                  "beside it: you make it future-proof rather than merely correct. Nothing in this "
-                  "library could say that. A conflict ended with 'file an issue for their part', "
-                  "which is what you write when there is no channel — it routes a live negotiation "
+                  "actually doing, and that is what the other agent needs most — two sessions in "
+                  "one checkout are not rivals, they are building one app, and knowing a rewrite of "
+                  "the auth middleware is COMING changes how you write the module beside it: "
+                  "future-proof rather than merely correct. Nothing here could say that; a conflict "
+                  "ended with 'file an issue for their part', which routes a live negotiation "
                   "through a human and a day.\n\n"
                   "The user's framing decided the shape: an item left in the cabin, the way ground "
                   "control solves a problem with what is aboard. A general channel can be "
-                  "repurposed by intelligent agents for the case nobody anticipated; a "
-                  "special-purpose protocol only ever solves the case we imagined. So: free-form "
-                  "messages, addressed three ways — broadcast (this machine), channel (one "
-                  "checkout), direct (one agent).\n\n"
-                  "IT STAYS A TRANSPONDER. Direct messages push into the recipient; broadcast and "
-                  "channel are PULL-ONLY. This is not squeamishness about volume, it is that chat "
-                  "traffic and the scope-violation alarm share one delivery path, and an agent "
-                  "taught to skim the channel skims the alarm with it. The library's oldest lesson "
-                  "is that a note printed forever is a note nobody reads. An agent that wants the "
-                  "room asks for it — and one that has been hit once will ask.\n\n"
-                  "Storage is an append-only log per address with a per-reader cursor, which is why "
-                  "reading is NOT destructive: it marks the message read for you and leaves it "
-                  "standing for everyone else. A queue that deletes on read cannot serve two "
-                  "addressees, and cannot be re-read by an agent that wants to check what it was "
-                  "told.\n\n"
-                  "STATED LIMIT, because it will otherwise be discovered as a hang: there is no "
-                  "wake-up. Nothing can push into a running turn, so a reply lands when the other "
-                  "side next fires a hook, or never, if it has finished. This is letters, not "
-                  "conversation. It carries 'I will need api/** when you are done' perfectly well "
-                  "and cannot carry a handshake. The system stamps sender identity and the sender's "
-                  "current claims onto every message, so an assertion about the map can always be "
-                  "checked against the map rather than believed."},
+                  "repurposed for the case nobody anticipated; a special-purpose protocol only "
+                  "solves the one we imagined. So free-form messages, addressed three ways — "
+                  "broadcast (this machine), channel (one checkout), direct (one agent).\n\n"
+                  "IT STAYS A TRANSPONDER. Direct pushes; broadcast and channel are PULL-ONLY. Not "
+                  "squeamishness about volume: chat traffic and the violation alarm share one "
+                  "delivery path, and an agent taught to skim the channel skims the alarm with it. "
+                  "The oldest lesson here is that a note printed forever is a note nobody reads. An "
+                  "agent that wants the room asks — and one that has been hit once will ask.\n\n"
+                  "Storage is an append-only log per address with a per-reader cursor, so reading "
+                  "is NOT destructive: it marks the message read for you and leaves it standing for "
+                  "everyone else. A queue that deletes on read cannot serve two addressees, and "
+                  "cannot be re-read by an agent checking what it was told.\n\n"
+                  "STATED LIMIT, or it will be discovered as a hang: there is no wake-up. A reply "
+                  "lands when the other side next fires a hook, or never, if it has finished. "
+                  "Letters, not conversation — it carries 'I will need api/** when you are done' "
+                  "and cannot carry a handshake. Sender identity and current claims are stamped on "
+                  "every message, so an assertion about the map can be checked against it rather "
+                  "than believed."},
          children=[
              Node(id="alt-no-channel-file-an-issue", kind="alternative",
                   name="Keep the status quo: a conflict tells the asker to take a narrower scope "
@@ -1157,39 +1155,37 @@ DECISIONS = [
          ]),
 
     Node(id="inform-peers-never-police-an-agents-internals", kind="decision",
+         meta={"amended": "9cc59ba180fe tightened under the 600-word budget; every claim kept"},
          name="The map addresses PEERS who cannot see each other; what happens inside one agent's "
               "delegation is not its business",
          links={"rests_on": ["hyp-a-parents-fan-out-is-its-own-coordination"]},
          payload={"rationale":
-                  "Raised by the observation that a session's subagents all fire hooks under the "
-                  "parent's session_id, so the map cannot tell them apart. The first instinct was to "
-                  "treat that as a hole and go get an actor id. The user's objection is the "
-                  "decision: it is not this library's job to make sure an agent does its own job "
-                  "well.\n\n"
-                  "The failure this whole project exists to prevent is AN AGENT NOT KNOWING ANOTHER "
-                  "AGENT IS THERE. That is a statement about peers — two sessions, started by "
-                  "different hands, with nothing above them that knows about both. A parent and its "
-                  "subagents are not peers: the parent chose both tasks and knows exactly what it "
-                  "dispatched. There is already a coordinator, and it is better informed than the "
-                  "map could ever be, because it holds the intent and the map only ever sees paths. "
-                  "The harness enforces the same partition from its own side — a subagent launch "
-                  "tells the parent, unprompted, to avoid working the same files as its sibling.\n\n"
-                  "So the cost of intervening is real and the benefit is speculative. To see inside "
-                  "a delegation the courier would have to model what a subagent IS — a vendor's "
-                  "internal strategy, undocumented, unobservable from a hook payload, and free to "
-                  "change in any release. Checks built on that model would fire on arrangements that "
-                  "are none of our business, perturb agents that were coordinating fine, and go "
-                  "quietly wrong the first time a harness reorganises how it fans out. The courier's "
-                  "value is that it speaks rarely and truly; every spurious notice is a withdrawal "
-                  "from that account.\n\n"
+                  "A session's subagents all fire hooks under the parent's session_id, so the map "
+                  "cannot tell them apart. The first instinct was to treat that as a hole and go "
+                  "get an actor id. The user's objection is the decision: it is not this library's "
+                  "job to make sure an agent does its own job well.\n\n"
+                  "The failure this project exists to prevent is AN AGENT NOT KNOWING ANOTHER AGENT "
+                  "IS THERE — a statement about peers, two sessions started by different hands with "
+                  "nothing above them that knows about both. A parent and its subagents are not "
+                  "peers: the parent chose both tasks. There is already a coordinator, better "
+                  "informed than the map could be, because it holds the intent and the map sees "
+                  "only paths. The harness enforces the same partition from its side, telling a "
+                  "parent unprompted to keep its fan-out off the same files.\n\n"
+                  "So the cost of intervening is real and the benefit speculative. To see inside a "
+                  "delegation the courier would have to model what a subagent IS — a vendor's "
+                  "internal strategy, undocumented, unobservable from a hook payload, free to "
+                  "change in any release. Checks built on it would fire on arrangements that are "
+                  "none of our business, perturb agents coordinating fine, and go quietly wrong the "
+                  "first time a harness reorganises its fan-out. The courier's value is that it "
+                  "speaks rarely and truly; every spurious notice is a withdrawal from that "
+                  "account.\n\n"
                   "The boundary, so the next reader need not re-derive it: transponder informs an "
                   "agent of what it CANNOT see — another session's region, a write that landed in "
                   "one, history that moved underneath it. It does not inform an agent about its own "
-                  "conduct, and it models nobody's internals. Where those collide, the map stays "
-                  "silent and the tape stays honest.\n\n"
+                  "conduct, and models nobody's internals.\n\n"
                   "Knowingly given up, and named in the hypothesis this rests on: if a parent fans "
                   "out two agents that collide in a file it never considered, nothing here catches "
-                  "it. That is the same bet information-not-exclusion already made one level up."},
+                  "it. The same bet information-not-exclusion already made one level up."},
          children=[
              Node(id="alt-actor-ids-for-subagents", kind="alternative",
                   name="Key the map and the witness on a per-ACTOR id instead of the session id",
