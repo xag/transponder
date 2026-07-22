@@ -80,6 +80,16 @@
     "digest": "91f48162dd38"
   },
   {
+    "path": "hyp-a-parents-fan-out-is-its-own-coordination",
+    "kind": "hypothesis",
+    "digest": "22af1d40fa88"
+  },
+  {
+    "path": "hyp-a-parents-fan-out-is-its-own-coordination/kill-subagents-collide-unintended",
+    "kind": "falsification",
+    "digest": "3da32dc2e3fd"
+  },
+  {
     "path": "hyp-readers-not-starved",
     "kind": "hypothesis",
     "digest": "177479be0309"
@@ -117,7 +127,7 @@
   {
     "path": "hyp-subagents-share-the-session-id",
     "kind": "hypothesis",
-    "digest": "28ac2c4da4c7"
+    "digest": "9eda8d6a89d8"
   },
   {
     "path": "hyp-subagents-share-the-session-id/kill-subagent-has-own-id",
@@ -143,6 +153,21 @@
     "path": "hyp-the-fingerprint-sees-every-write/kill-fingerprint-blind",
     "kind": "falsification",
     "digest": "f89b64156356"
+  },
+  {
+    "path": "inform-peers-never-police-an-agents-internals",
+    "kind": "decision",
+    "digest": "6c9d5bcf41d9"
+  },
+  {
+    "path": "inform-peers-never-police-an-agents-internals/alt-actor-ids-for-subagents",
+    "kind": "alternative",
+    "digest": "21165f7cecb3"
+  },
+  {
+    "path": "inform-peers-never-police-an-agents-internals/alt-warn-the-parent-on-fan-out",
+    "kind": "alternative",
+    "digest": "643bb7c2944c"
   },
   {
     "path": "information-not-exclusion",
@@ -302,17 +327,22 @@
   {
     "path": "release",
     "kind": "gate",
-    "digest": "5373c47964d8"
+    "digest": "17082cb69446"
   },
   {
-    "path": "subagent-writes-are-unattributable",
-    "kind": "debt",
-    "digest": "87ae806bbfe6"
+    "path": "retract-the-subagent-debt",
+    "kind": "retraction",
+    "digest": "3bf07e55aedd"
   },
   {
-    "path": "subagent-writes-are-unattributable/identify-the-actor-not-the-session",
-    "kind": "discharge",
-    "digest": "dfb05a8fc49a"
+    "path": "retract-the-subagent-debt/tomb-subagent-debt",
+    "kind": "tombstone",
+    "digest": "226b92578cdf"
+  },
+  {
+    "path": "retract-the-subagent-debt/tomb-subagent-discharge",
+    "kind": "tombstone",
+    "digest": "bdc7966716bf"
   },
   {
     "path": "the-background-task-cannot-be-observed",

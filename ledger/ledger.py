@@ -708,6 +708,63 @@ DECISIONS = [
                                   "out of date is the same cardinal sin as a map that is confidently "
                                   "wrong — see tray-is-a-face-not-an-authority"}),
          ]),
+
+    Node(id="inform-peers-never-police-an-agents-internals", kind="decision",
+         name="The map addresses PEERS who cannot see each other; what happens inside one agent's "
+              "delegation is not its business",
+         links={"rests_on": ["hyp-a-parents-fan-out-is-its-own-coordination"]},
+         payload={"rationale":
+                  "Raised by the observation that a session's subagents all fire hooks under the "
+                  "parent's session_id, so the map cannot tell them apart. The first instinct was to "
+                  "treat that as a hole and go get an actor id. The user's objection is the "
+                  "decision: it is not this library's job to make sure an agent does its own job "
+                  "well.\n\n"
+                  "The failure this whole project exists to prevent is AN AGENT NOT KNOWING ANOTHER "
+                  "AGENT IS THERE. That is a statement about peers — two sessions, started by "
+                  "different hands, with nothing above them that knows about both. A parent and its "
+                  "subagents are not peers: the parent chose both tasks and knows exactly what it "
+                  "dispatched. There is already a coordinator, and it is better informed than the "
+                  "map could ever be, because it holds the intent and the map only ever sees paths. "
+                  "The harness enforces the same partition from its own side — a subagent launch "
+                  "tells the parent, unprompted, to avoid working the same files as its sibling.\n\n"
+                  "So the cost of intervening is real and the benefit is speculative. To see inside "
+                  "a delegation the courier would have to model what a subagent IS — a vendor's "
+                  "internal strategy, undocumented, unobservable from a hook payload, and free to "
+                  "change in any release. Checks built on that model would fire on arrangements that "
+                  "are none of our business, perturb agents that were coordinating fine, and go "
+                  "quietly wrong the first time a harness reorganises how it fans out. The courier's "
+                  "value is that it speaks rarely and truly; every spurious notice is a withdrawal "
+                  "from that account.\n\n"
+                  "The boundary, so the next reader need not re-derive it: transponder informs an "
+                  "agent of what it CANNOT see — another session's region, a write that landed in "
+                  "one, history that moved underneath it. It does not inform an agent about its own "
+                  "conduct, and it models nobody's internals. Where those collide, the map stays "
+                  "silent and the tape stays honest.\n\n"
+                  "Knowingly given up, and named in the hypothesis this rests on: if a parent fans "
+                  "out two agents that collide in a file it never considered, nothing here catches "
+                  "it. That is the same bet information-not-exclusion already made one level up."},
+         children=[
+             Node(id="alt-actor-ids-for-subagents", kind="alternative",
+                  name="Key the map and the witness on a per-ACTOR id instead of the session id",
+                  payload={"why": "the shape the problem first suggested, and it was written down as "
+                                  "a discharge before being rejected on its merits (see "
+                                  "retract-the-subagent-debt). Half of it is free — `declare_scope` "
+                                  "already takes an id the agent supplies, so a subagent could name "
+                                  "itself. The other half cannot be bought: the COURIER AND THE "
+                                  "WITNESS learn identity only from the hook payload, which carries "
+                                  "a session and nothing else. Shipping the free half alone makes "
+                                  "the map MORE wrong — regions correctly split between two actors, "
+                                  "every violation of them still attributed to whichever declared "
+                                  "first. And buying the hard half means tracking a vendor's "
+                                  "delegation model from outside it"}),
+             Node(id="alt-warn-the-parent-on-fan-out", kind="alternative",
+                  name="Have the courier warn a session when it spawns agents into its own region",
+                  payload={"why": "noise aimed at the one party that already knows. It would fire on "
+                                  "every ordinary fan-out — the overwhelmingly common, entirely "
+                                  "correct case — to catch a collision nobody has yet observed "
+                                  "happening by accident. Teaching agents to skim past the courier "
+                                  "is the most expensive thing this library can do to itself"}),
+         ]),
 ]
 
 HYPOTHESES = [
@@ -831,7 +888,8 @@ HYPOTHESES = [
     # This hypothesis was written under v1, where a shared id was the thing standing between a parent
     # and a deadlock against its own child, so confirming it was a relief. `information-not-exclusion`
     # deleted the mutex, and under a MAP the same fact means N actors wear one identity and the map
-    # cannot tell them apart. Carried on as subagent-writes-are-unattributable.
+    # cannot tell them apart. Carried on as hyp-a-parents-fan-out-is-its-own-coordination — which
+    # holds that this costs nothing, because a parent is not a peer of its children.
     #
     # This is the second time in this file a falsifier has been found watching the wrong door (see
     # hyp-serialising-shells-does-not-starve). The lesson is not 'recalibrate the falsifier' — this
@@ -839,9 +897,9 @@ HYPOTHESES = [
     # unstated premise about WHY the answer matters, and a design change can invert that premise
     # while leaving the claim, the falsifier and the verdict all untouched and all still true.
     Node(id="hyp-subagents-share-the-session-id", kind="hypothesis",
-         meta={"amended": "28ac2c4da4c7 re-verified 2026-07-22 and the status line says so; the "
+         meta={"amended": "9eda8d6a89d8 re-verified 2026-07-22 and the status line says so; the "
                           "claim and its falsifier are untouched. What moved is what the answer "
-                          "MEANS — carried on as subagent-writes-are-unattributable"},
+                          "MEANS — carried on as hyp-a-parents-fan-out-is-its-own-coordination"},
          name="A subagent's tool calls carry its PARENT's session id, so the lock is reentrant "
               "across the whole agent tree",
          payload={"claim": "A session spawns subagents; a subagent writes the same checkout its "
@@ -860,8 +918,8 @@ HYPOTHESES = [
                            "inferred from the id being a property of the SESSION, not of the agent, "
                            "and that inference is what the falsifier below watches.",
                   "status": "verified 2026-07-13; re-verified 2026-07-22 with two subagents on one "
-                            "checkout, still true, and now a LIABILITY rather than a relief — see "
-                            "subagent-writes-are-unattributable",
+                            "checkout, still true, and no longer the relief it was written as — see "
+                            "hyp-a-parents-fan-out-is-its-own-coordination",
                   "cadence": "every hook call"},
          children=[
              Node(id="kill-subagent-has-own-id", kind="falsification",
@@ -871,6 +929,43 @@ HYPOTHESES = [
                            "do not inherit the parent's id. Fires on the id itself, cheaply, on "
                            "any recording, LONG BEFORE anyone deadlocks: it does not wait for the "
                            "hang to prove the hang is possible."}),
+         ]),
+
+    Node(id="hyp-a-parents-fan-out-is-its-own-coordination", kind="hypothesis",
+         name="A parent's own knowledge of what it dispatched is sufficient coordination for its "
+              "subagents, so the map's blindness to them costs nothing",
+         payload={"claim":
+                  "Every subagent of a session fires its hooks under the PARENT's session_id "
+                  "(hyp-subagents-share-the-session-id), so N actors wear one identity and the map "
+                  "cannot tell them apart. Proved, on the tape, 2026-07-22: two subagents aimed at "
+                  "one file were one agent to the map, and the conflict between them was "
+                  "structurally unreportable.\n\n"
+                  "The claim is that this costs nothing, because the arrangement it fails on is one "
+                  "that does not arise unattended. A parent is not a peer of its children — it chose "
+                  "both tasks — so the coordinator the map exists to substitute for is already "
+                  "present, and better informed. The two subagents that collided did so because "
+                  "they were INSTRUCTED to; that proves reachability, not occurrence.\n\n"
+                  "What is genuinely open, and the only part worth watching, is UNINTENDED overlap: "
+                  "a parent partitions by TASK, and two tasks can meet in a FILE it never considered "
+                  "— 'fix the auth bug' and 'add rate limiting' landing in one middleware module. If "
+                  "that turns out to be common, this belief is wrong and "
+                  "inform-peers-never-police-an-agents-internals loses its ground.",
+                  "status": "believed, not yet observed either way; the falsifier below has not been "
+                            "run over the transcript history that could answer it",
+                  "cadence": "any fan-out into a shared checkout"},
+         children=[
+             Node(id="kill-subagents-collide-unintended", kind="falsification",
+                  payload={"claim":
+                           "A harness transcript shows two concurrent subagents of ONE session "
+                           "writing the same path, where the parent's dispatch did not aim them "
+                           "there — collision by accident rather than by instruction.\n\n"
+                           "Note WHERE this must be observed, because it is the one falsifier in "
+                           "this file that cannot be run against our own tapes: subagents are "
+                           "invisible in them, and that invisibility is the very fact under test. "
+                           "It is a query over harness transcripts, which do record each subagent's "
+                           "tool calls with their file paths. Retrospective, mechanical, needs "
+                           "nobody to lose work first — it fires on a near-miss in history that has "
+                           "already happened."}),
          ]),
 
     Node(id="hyp-renewal-on-activity", kind="hypothesis",
@@ -1016,64 +1111,49 @@ DEBTS = [
         ],
     ),
 
+]
+
+RETRACTIONS = [
     Node(
-        id="subagent-writes-are-unattributable",
-        kind="debt",
-        name="Every subagent of a session is the SAME agent to the map, so a collision between two "
-             "of them can be neither declared nor reported",
+        id="retract-the-subagent-debt",
+        kind="retraction",
+        name="`subagent-writes-are-unattributable` was a mood filed as a debt",
         payload={
-            "note":
-                "Observed 2026-07-22, in a test built to produce an ordinary scope conflict: two "
-                "subagents, one checkout, one file, each told to edit it. The conflict was never "
-                "reachable. Every hook event either of them fired carried the PARENT's session_id. "
-                "They were not two agents on the map. They were one agent, three times over, "
-                "counting me.\n\n"
-                "The consequences follow mechanically from identity being the map's key. A's "
-                "declaration is handed back to B as B's own, because the map cannot double-book a "
-                "region it believes one session already holds — the conflict answer, the overlap and "
-                "the free-hint all go missing exactly when they are needed. B's write into A's "
-                "region is not a violation, because the witness attributes it to the session that "
-                "declared the region. And `release_scope` by either drops the region out from under "
-                "both.\n\n"
-                "A DEBT and not a hypothesis, by this file's own test: nothing about it is "
-                "uncertain. It is reachable today, it was reached on purpose, the tapes record it, "
-                "and the fix is known. Filing it as a belief awaiting evidence would hide a proved "
-                "hole behind the shape of an experiment.\n\n"
-                "Narrower than it sounds in one direction, wider in the other. Two SEPARATE sessions "
-                "still get distinct ids and the map works exactly as designed — verified on the same "
-                "tapes, where a second session worked ~/Projects/quern under its own id throughout. "
-                "But subagent fan-out is now an ordinary way to get several writers into one "
-                "checkout, and it is precisely the arrangement the map cannot see.",
-        },
-        params={
-            "attributes_a_write_to_its_author": Quantity(
-                value=0, unit="subagent-write", provenance="observed 2026-07-22", grounded=False,
-                source="the map and the witness both key on session_id, which is a property of the "
-                       "SESSION and not of the actor; no one has yet keyed either on something "
-                       "unique per actor"),
+            "why":
+                "Filed 2026-07-22 and buried the same day, before it was ever committed to as a "
+                "debt. The observation behind it is sound and survives as "
+                "hyp-a-parents-fan-out-is-its-own-coordination: two subagents on one checkout fire "
+                "every hook under the parent's session_id, so the map cannot tell them apart. What "
+                "was wrong was the KIND, and this vocabulary names the error in as many words — a "
+                "retraction is for 'a positioning statement filed as a hypothesis, A MOOD FILED AS "
+                "A DEBT'.\n\n"
+                "A debt is known-unsound with nothing uncertain. Half of this was certain: IF two "
+                "subagents compete for a region, the map is blind to it — proved, on the tape. The "
+                "other half was assumed: that they WILL. And they were only observed doing so "
+                "because the test instructed them to. A constructed collision proves reachability, "
+                "which is not occurrence, and dressing an untested behavioural belief as a proved "
+                "hole is the same error as the one this ledger was rebuilt to stop — running the "
+                "other way. The 2026-07-13 mistake filed a proved hole as a hypothesis; this filed "
+                "an open question as a debt. Both launder the distinction the gate depends on, and "
+                "a gate that goes red on a guess teaches its reader to discount it.\n\n"
+                "It also carried a discharge — 'key the map on an actor id' — that named work this "
+                "project has now decided it should NOT do. That is not a debt waiting to be paid. "
+                "It is a rejected alternative, and it lives as one under "
+                "inform-peers-never-police-an-agents-internals.",
         },
         children=[
-            Node(id="identify-the-actor-not-the-session", kind="discharge",
-                 name="Key the map and the witness on an ACTOR id — declared by the agent, resolved "
-                      "by the hook — rather than on the harness's session id",
-                 payload={"competence": "this library, plus an agent willing to say which actor it "
-                                        "is; the tapes already record every id a hook receives, so "
-                                        "whether it worked is a query over a recording",
-                          "note": "The discharge is NOT 'wait for harnesses to give subagents their "
-                                  "own ids'. That is the mistake scope-declared-by-the-agent was "
-                                  "written to correct: the missing fact is a property of the AGENT'S "
-                                  "INTENT, and the agent can be made to say it out loud. "
-                                  "`declare_scope` already takes `session_id` as a string the agent "
-                                  "supplies, so half of this is free — a subagent can declare "
-                                  "itself.\n\n"
-                                  "The other half is the hard half and must not be skipped: the "
-                                  "COURIER AND THE WITNESS learn identity only from the hook "
-                                  "payload, which carries the session and nothing else. An actor id "
-                                  "known to the map but invisible to the witness would make the map "
-                                  "MORE wrong, not less — regions correctly split between two "
-                                  "actors, and every violation of them still attributed to whichever "
-                                  "one declared first. So this is discharged only when a hook can "
-                                  "resolve the actor behind a call, and not before."}),
+            Node(id="tomb-subagent-debt", kind="tombstone",
+                 payload={"was": "subagent-writes-are-unattributable",
+                          "why": "never valid: an open behavioural question filed as a "
+                                 "known-unsound thing. Carried on, as the hypothesis it always "
+                                 "was, by hyp-a-parents-fan-out-is-its-own-coordination"}),
+            Node(id="tomb-subagent-discharge", kind="tombstone",
+                 payload={"was": "subagent-writes-are-unattributable/identify-the-actor-not-the-"
+                                 "session",
+                          "why": "a discharge for a debt that was never a debt, naming work that "
+                                 "has since been rejected on its merits. It stands as "
+                                 "alt-actor-ids-for-subagents under "
+                                 "inform-peers-never-police-an-agents-internals"}),
         ],
     ),
 ]
@@ -1083,9 +1163,8 @@ DEBTS = [
 GATE = Node(
     id="release",
     kind="gate",
-    meta={"amended": "5373c47964d8 admits subagent-writes-are-unattributable, and the note records "
-                     "that the gate went red again; nothing already admitted was changed or "
-                     "removed"},
+    meta={"amended": "17082cb69446 the note records a red that should not have happened and what it "
+                     "teaches; `admits` is back to what it was, and nothing admitted was changed"},
     name="What is allowed onto the write path of every session on a machine",
     payload={
         "note":
@@ -1101,17 +1180,16 @@ GATE = Node(
             "way for a debt to die — quietly weakening the claims to launder a debt is not, and "
             "the difference is whether the change is written where the next reader must see it. "
             "It is: SPEC.md says detection-not-prevention on every path, as the design.\n\n"
-            "RED AGAIN 2026-07-22, and this time by a debt that was PAID FOR IN ADVANCE and "
-            "collected anyway. `hyp-subagents-share-the-session-id` recorded the exact fact behind "
-            "subagent-writes-are-unattributable in 2026-07-13, verified it, and filed it as good "
-            "news — which it was, for the design that existed then. The ledger held the fact and "
-            "missed the consequence, because the consequence only appeared when "
-            "information-not-exclusion changed what identity was FOR. Worth stating plainly: a "
-            "green gate means nothing unsound is admitted by the links it has, and it says nothing "
-            "about a premise that quietly rotted under a node nobody re-read.",
+            "It went RED for a few minutes on 2026-07-22 and should not have. A debt was filed for "
+            "the map's blindness to subagents, and the blindness is real — but whether anything "
+            "unsound TRAVELS through it is an open behavioural question, not a known defect. See "
+            "retract-the-subagent-debt. The near-miss is worth keeping in front of this gate: the "
+            "temptation was to admit a proved MECHANISM rather than a proved HARM, and a gate that "
+            "reddens on a mechanism nobody has seen fire is a gate its reader learns to wave "
+            "through. What guards that question now is a hypothesis with a falsifier, which is "
+            "where an open question belongs.",
     },
-    links={"admits": ["cursor-settles-late", "mcp-writes-settle-late",
-                      "subagent-writes-are-unattributable"]},
+    links={"admits": ["cursor-settles-late", "mcp-writes-settle-late"]},
 )
 
 
@@ -1133,7 +1211,7 @@ def build() -> Quern:
     quern = Quern(packages=[next(r for r in refs if r.name == "ledger")])
     quern = lib.effective(quern)
 
-    quern.root.children = [*DECISIONS, *HYPOTHESES, *DEBTS, GATE]
+    quern.root.children = [*DECISIONS, *HYPOTHESES, *DEBTS, *RETRACTIONS, GATE]
     return quern
 
 
