@@ -191,8 +191,12 @@ def post_tool_use(payload: dict) -> None:
         return
     _record()
     session = payload.get("session_id") or "unknown"
+    # The declared path is the ONE thing that makes attribution certain: the harness said this call
+    # would write that file. Everything else the fingerprint sees is "the tree moved", which is not
+    # the same fact and must not be reported as if it were.
+    declared = _target_path(payload) if (payload.get("tool_name") or "") in WRITING_TOOLS else ""
     for repo in _targets(payload):
-        for note in common.settle(repo, session, _intent(payload)):
+        for note in common.settle(repo, session, _intent(payload), declared=declared):
             _say(note)
 
 

@@ -147,6 +147,12 @@ DECISIONS = [
                                   "fingerprint proves the command read"}),
          ]),
 
+    # ITS LAST SENTENCE OVERREACHED, and the text is left standing so that stays visible. "An
+    # observation cannot be wrong about what a command did" is true of one agent and false of two —
+    # the fingerprint is of the TREE, and attributing it to whichever session's call happened to span
+    # it is exactly the kind of unevidenced inference the rest of this entry forbids. The method
+    # survives and is not in question; what it can CONCLUDE is narrowed by
+    # a-fingerprint-cannot-name-an-author, reached by watching it produce four false accusations.
     Node(id="observe-do-not-predict", kind="decision",
          name="Observe the working copy; never classify a command",
          payload={"rationale":
@@ -713,6 +719,62 @@ DECISIONS = [
                                   "`scopes()` exists to answer truthfully. A map that is confidently "
                                   "out of date is the same cardinal sin as a map that is confidently "
                                   "wrong — see tray-is-a-face-not-an-authority"}),
+         ]),
+
+    Node(id="a-fingerprint-cannot-name-an-author", kind="decision",
+         name="The witness proves the tree MOVED, never who moved it — attribution is graded by the "
+              "evidence actually in hand",
+         links={"rests_on": ["observe-do-not-predict"]},
+         payload={"rationale":
+                  "observe-do-not-predict ends 'An observation cannot be wrong about what a command "
+                  "did.' That is true of one agent and false of two — false, that is, in the only "
+                  "situation this library exists for. The fingerprint is of the TREE. Attributing "
+                  "it to whoever's tool call happened to span it is not an observation at all; it "
+                  "is an unevidenced inference of exactly the kind the rest of that entry "
+                  "forbids.\n\n"
+                  "Watched live on 2026-07-22, and it is worth stating in full because every part "
+                  "of it was fiction. A holder appended a row to its own declared file every ten "
+                  "seconds. A passer-by ran a read loop — `head`, `wc` — long enough to span a "
+                  "tick. It was told four times that it had written inside another agent's reserved "
+                  "region, and the holder was told four times that its rebuild had been trampled by "
+                  "an agent that never wrote a byte. One of the four was triggered by a call that "
+                  "touches no file at all. The channel built that same day to tell a victim the "
+                  "truth was delivering invention.\n\n"
+                  "So attribution is graded, and the grades are named in the messages:\n"
+                  "  DECLARED — the tool said which file it would write. That is a fact, and the "
+                  "report is unchanged: named, loud, remedy attached, victim told.\n"
+                  "  NOBODY ELSE AWAKE — a shell, and the region's owner did not renew while the "
+                  "call ran. Not certain, but no other actor was observed, so it is still reported "
+                  "as before. Hedging this case too was drafted and rejected within the hour: it "
+                  "weakens the loudest thing the library says, for the case that was always sound.\n"
+                  "  THE OWNER WAS WORKING — the holder renewed its claim inside the window. The "
+                  "likelier author is the agent that declared the region and is writing in it, so "
+                  "the passer-by is told what was actually seen and THE HOLDER IS TOLD NOTHING.\n\n"
+                  "Silence for the holder is the load-bearing half. A false accusation delivered to "
+                  "the party whose work is at stake is worse than no message: it spends the "
+                  "credibility of every true one after it, on the one channel that exists to be "
+                  "believed.\n\n"
+                  "Renewal is evidence, not prediction — it says an agent was awake, never what it "
+                  "wrote. That is the distinction observe-do-not-predict actually rests on, and this "
+                  "entry keeps its method while narrowing its conclusion."},
+         children=[
+             Node(id="alt-hedge-every-shell-report", kind="alternative",
+                  name="Report every non-declared write in hedged terms",
+                  payload={"why": "written first, and the test suite caught it: three tests that "
+                                  "pin a genuine shell trespass went red. It softens the primary "
+                                  "alarm for the idle-holder case, which never misfired, in order "
+                                  "to fix a failure that only happens when the holder is active"}),
+             Node(id="alt-attribute-by-content", kind="alternative",
+                  name="Compare what appeared against what the holder produces, and judge by shape",
+                  payload={"why": "reading the bytes to guess an author is #7 in a new hat. A "
+                                  "holder whose rows look like anything, or an intruder that writes "
+                                  "something similar, and the judgement inverts silently"}),
+             Node(id="alt-os-level-attribution", kind="alternative",
+                  name="Ask the operating system which process wrote the file",
+                  payload={"why": "the only thing that would make a shell write certainly "
+                                  "attributable, and it is a per-platform audit daemon — the "
+                                  "supervised background service protocol-not-process refused at "
+                                  "inception, bought for one grade of confidence"}),
          ]),
 
     Node(id="the-map-is-the-watch-list", kind="decision",

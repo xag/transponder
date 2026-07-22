@@ -20,6 +20,26 @@
     "digest": "22daa2f60059"
   },
   {
+    "path": "a-fingerprint-cannot-name-an-author",
+    "kind": "decision",
+    "digest": "7320b179479c"
+  },
+  {
+    "path": "a-fingerprint-cannot-name-an-author/alt-attribute-by-content",
+    "kind": "alternative",
+    "digest": "5d9a855b64cd"
+  },
+  {
+    "path": "a-fingerprint-cannot-name-an-author/alt-hedge-every-shell-report",
+    "kind": "alternative",
+    "digest": "5b13cd2281af"
+  },
+  {
+    "path": "a-fingerprint-cannot-name-an-author/alt-os-level-attribution",
+    "kind": "alternative",
+    "digest": "57aa382e2340"
+  },
+  {
     "path": "a-refusal-must-be-actionable",
     "kind": "decision",
     "digest": "e7013b6fbc44"

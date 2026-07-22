@@ -249,26 +249,51 @@ def watch(repo: str, session: str) -> list[str]:
         notes.append("transponder: the witness's settle half (PostToolUse) is not wired, so writes "
                      "here are NOT being observed. Fix the hooks (python -m transponder.toggle on) and "
                      "restart this session — it snapshotted its hooks when it started.")
-    _remember(SNAP_DIR, session, repo, json.dumps(witness.snapshot(repo)))
+    # The time goes in the WRAPPER, not the snapshot: written_between() treats every key that is not
+    # "HEAD" as a path, so a timestamp stored inside it would be reported as a file that changed.
+    _remember(SNAP_DIR, session, repo,
+              json.dumps({"at": env.now(), "snap": witness.snapshot(repo)}))
     return notes
 
 
-def settle(repo: str, session: str, intent: str) -> list[str]:
-    """The after-picture: name the paths that moved, and say whose region they landed in.
+def settle(repo: str, session: str, intent: str, declared: str = "") -> list[str]:
+    """The after-picture: name the paths that moved, and say whose region they landed in — and be
+    honest about which of those two facts we actually have.
 
-    Unmoved — almost every call — costs nothing and says nothing. Moved into your own scope: yours,
-    renewed, silent. Moved into another agent's declared region: the loudest thing this library
-    says, with the remedy attached, because it could not have been prevented (the target of a shell
-    is not knowable before it runs — the old §7a proof still stands) and it must not be silent.
+    A FINGERPRINT PROVES THE TREE MOVED. IT DOES NOT PROVE YOU MOVED IT. That distinction was
+    missing here, and it produced fiction the first time two agents ran at once: a holder appending
+    to its own declared file every ten seconds, and a passer-by whose only crime was a `head`/`wc`
+    loop long enough to span a tick. Four notes went out naming the reader as the author, and four
+    more went to the holder saying its work had been trampled by someone who never wrote a byte.
+    The claim in observe-do-not-predict — "an observation cannot be wrong about what a command
+    did" — is true of one agent and false of two, which is to say false in the only situation this
+    library exists for.
+
+    So attribution is now graded by the evidence actually in hand:
+
+      DECLARED   the tool named the path it would write (Edit/Write). That path moving IS this
+                 session's doing, and it is reported and delivered exactly as before.
+      OBSERVED   a shell or MCP call, and something in another agent's region moved during it. If
+                 that agent was ACTIVE in the same window — its claim renewed inside it — the far
+                 likelier author is the agent that declared the region and is working in it, so the
+                 writer gets a hedged note and THE HOLDER IS TOLD NOTHING. A false accusation
+                 delivered to a victim is worse than silence: it is the one channel built to tell
+                 them the truth.
+      Otherwise it is still not certain, but no other author is known, so it is reported both ways
+      in hedged terms rather than as a proven trespass.
     """
     memo = _recall(SNAP_DIR, session, repo)
     if not memo:
         return []
     _forget(SNAP_DIR, session, repo)
     try:
-        before = json.loads(memo)
+        memo_obj = json.loads(memo)
     except (json.JSONDecodeError, ValueError):
         return []
+    # A memo written before the wrapper existed is the bare snapshot; `at=0` then reads as "we do
+    # not know when the window opened", which makes every holder look inactive — hedged, not silent.
+    before = memo_obj.get("snap", memo_obj) if isinstance(memo_obj, dict) else memo_obj
+    since = memo_obj.get("at", 0) if isinstance(memo_obj, dict) else 0
 
     after = witness.snapshot(repo)
     written = witness.written_between(repo, before, after)
@@ -281,9 +306,22 @@ def settle(repo: str, session: str, intent: str) -> list[str]:
     notes = []
     if bad := scope.violations(session, written):
         head_moved = before.get("HEAD") != after.get("HEAD")
-        notes.append(format_violation(repo, bad, head_moved=head_moved))
-        for victim, paths in _by_victim(bad).items():
-            post(victim, repo, format_intrusion(repo, session, paths, head_moved))
+        target = scope.canon(declared) if declared else None
+        # The holder was working in its own region while this call ran, and a fingerprint cannot
+        # tell an author from a bystander. Only THIS case produced the false alarms, so only this
+        # case is hedged — an idle holder's region changing during your call still names you, which
+        # is what the library has always claimed and what it can still stand behind.
+        theirs = [v for v in bad
+                  if v["path"] != target and _was_active(v["victim"], since)]
+        ours = [v for v in bad if v not in theirs]
+
+        if ours:
+            notes.append(format_violation(repo, ours, head_moved=head_moved))
+            for victim, paths in _by_victim(ours).items():
+                post(victim, repo, format_intrusion(repo, session, paths, head_moved))
+        if theirs:
+            # Said once, to the only party who can tell whether it was them — and NOT to the holder.
+            notes.append(format_probably_theirs(repo, theirs))
     if scope.declared(session) and (loose := scope.stray(session, written)):
         notes.append(
             "transponder: you wrote outside your declared scope, into a region nobody has claimed:\n"
@@ -292,6 +330,44 @@ def settle(repo: str, session: str, intent: str) -> list[str]:
               "extend_scope(repo, [...]).")
     remember_head(session, repo, env.git_head(repo))
     return notes
+
+
+def _was_active(holder: str, since: float) -> bool:
+    """Did the region's owner renew its claim inside the window we are judging?
+
+    Renewal is activity — every tool call renews (hyp-renewal-on-activity), and so does any
+    long-running participant that keeps its claim alive. It is the only evidence available about
+    who else was awake, and it is evidence rather than a guess about a command: it says an agent
+    was working, not what it wrote.
+    """
+    claim = scope.mine(holder)
+    return bool(claim) and claim.get("renewed_at", 0) >= since > 0
+
+
+def format_probably_theirs(repo: str, bad: list[dict]) -> str:
+    """A region changed during your call, and its owner was working in it at the time.
+
+    The old wording for this was "SCOPE VIOLATION — you just wrote inside another agent's reserved
+    region", and it was fiction: a holder appending to its own declared file every ten seconds, and
+    a passer-by whose only crime was a read loop long enough to span a tick. Said four times, and
+    four matching notes went to the holder claiming its work had been trampled.
+    """
+    out = ["A REGION YOU DO NOT HOLD CHANGED WHILE YOUR CALL WAS RUNNING — most likely its owner.",
+           f"  repo: {repo}", ""]
+    for v in bad:
+        out.append(f"  {_rel(repo, v['path'])}")
+        out.append(f"     belongs to agent {v['victim']} ({', '.join(v['scope'])})"
+                   + (f" — {v['intent']}" if v["intent"] else ""))
+    out += [
+        "",
+        "They renewed their claim while your call was in flight, so they were working in it — and a",
+        "fingerprint proves the tree moved, never who moved it. THEY HAVE NOT BEEN TOLD ANYTHING: a",
+        "false accusation delivered to the agent whose work is at stake is worse than silence.",
+        "",
+        "If that write WAS yours, you are in their region: stop, and declare what you need.",
+        "If it was not, there is nothing to do — this note is the whole of it.",
+    ]
+    return "\n".join(out)
 
 
 def format_violation(repo: str, bad: list[dict], head_moved: bool) -> str:
@@ -339,7 +415,13 @@ def _by_victim(bad: list[dict]) -> dict[str, list[str]]:
 def format_intrusion(repo: str, offender: str, paths: list[str], head_moved: bool) -> str:
     """What the VICTIM is told, on its next tool call. Deliberately not a mirror of the offender's
     message: that one says stop, this one says look. Only this agent knows what its work was, so
-    only it can decide whether what is on disk now is a loss, a merge, or fine."""
+    only it can decide whether what is on disk now is a loss, a merge, or fine.
+
+    It is sent ONLY when the write can be attributed — the tool named the path, or nobody else was
+    working here. This message is the one thing the victim acts on, and telling it "X wrote here"
+    when all we know is "this changed while X was running" spends the credibility of every note
+    after it. The unattributable case is told to the passer-by and to nobody else.
+    """
     out = ["SOMEONE WROTE IN YOUR REGION — while you were working, another agent wrote here:",
            f"  repo: {repo}", ""]
     for p in paths[:8]:

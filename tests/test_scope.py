@@ -222,6 +222,42 @@ def test_a_session_parked_on_a_question_is_told_on_the_way_back_in(repo):
         "a session coming back from its human was not told its region had been written")
 
 
+def test_a_holder_writing_its_own_region_is_not_blamed_on_a_passer_by(repo):
+    """A fingerprint proves the TREE moved. It does not prove YOU moved it.
+
+    Observed live: a holder appending to its own declared file every ten seconds, and a passer-by
+    whose only crime was a `head`/`wc` loop long enough to span a tick. Four notes told the reader
+    it had written in someone's region, and four more told the holder its rebuild had been trampled
+    by an agent that never wrote a byte. `observe-do-not-predict` says "an observation cannot be
+    wrong about what a command did" — true of one agent, false of two, which is false in the only
+    situation this library is for.
+
+    The evidence that separates the cases is the holder's own renewal: if it was working in its own
+    region while the call ran, the likelier author is the agent that declared it, and the passer-by
+    is told so in terms it can weigh — while the HOLDER is told nothing at all, because a false
+    accusation delivered to the party whose work is at stake is worse than silence."""
+    from transponder import messages
+
+    dirs(repo, "api")
+    declare(repo, "A", ["api/**"], intent="rebuilding the index")
+
+    payload = {"tool_name": "Bash", "tool_input": {"command": "wc -l a.txt"},
+               "cwd": repo, "session_id": "B"}
+    assert run_hook(CLAUDE, {**payload, "hook_event_name": "PreToolUse"}).returncode == 0
+
+    scope.renew("A")                                    # A is awake and working, as a holder is
+    with open(os.path.join(repo, "api", "server.py"), "a", encoding="utf-8") as f:
+        f.write("a row A appended to its own file\n")
+
+    post = run_hook(CLAUDE, {**payload, "hook_event_name": "PostToolUse"})
+
+    assert "SCOPE VIOLATION" not in post.stdout, "a reader was named as the author of someone's own write"
+    assert "most likely its owner" in post.stdout, "the passer-by should still be told what it saw"
+    assert not [m for m in messages.unread("A", repo, kinds=("direct",), mark=False)
+                if "SOMEONE WROTE IN YOUR REGION" in m["body"]], (
+        "the holder was told its own work had been trampled")
+
+
 def test_a_shell_write_from_a_different_checkout_is_still_witnessed(repo, tmp_path):
     """The hole that removed the last guess from this library.
 
