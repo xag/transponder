@@ -58,13 +58,23 @@ jobs:
             exit 1
           fi
 
-      # xag/fleet-registry, NOT xag/quern-registry. The registry moved and publishes went to the new
-      # repo; the old one is still public and still resolves, frozen at ledger@0.4.1. So cloning it
-      # succeeded, and the gate died on `ledger@0.5.0 (pinned) is not in the library` from the moment
-      # this project repinned — a stale URL that fails like a missing package rather than like a
-      # wrong address.
-      - name: Fetch the registry the lock pins against
-        run: git clone --depth 1 https://github.com/xag/fleet-registry "$RUNNER_TEMP/registry"
+      # THE REGISTRY IS NOT FETCHED HERE, and that is the fix, not a shortcut.
+      #
+      # This step cloned xag/quern-registry, which resolved and was frozen at ledger@0.4.1 — so the
+      # gate died on `ledger@0.5.0 (pinned) is not in the library` the moment this project repinned.
+      # Repointing it at xag/fleet-registry (where publishes actually go) made it worse: that repo is
+      # PRIVATE, the runner has no credential for it, and `git clone` over anonymous HTTPS asks for a
+      # username and dies `exit 128`. Five consecutive pushes failed on that line, and nothing said
+      # so — `ci` was green throughout, so the redness lived in a workflow nobody was reading.
+      #
+      # The clone was never necessary. `.quern/library` is COMMITTED (ledger/0.5.0.json,
+      # grounding/1.1.0.json — exactly what quern.lock pins), precisely so the package travels as
+      # data in this public repo and the check needs no registry at all. A registry, when reachable,
+      # only refreshes that cache. Verified before deleting: with QUERN_REGISTRY pointed at a path
+      # that does not exist, the gate reports 119 rules green.
+      #
+      # If a future pin is missing from the cache, the fix is to sync it in and COMMIT it — not to
+      # give CI a credential for a private registry.
 
       # In CI the commit under judgement IS HEAD and carries the roll written beside it, so
       # comparing against HEAD compares the tree with itself and passes whatever it is handed.
@@ -78,7 +88,6 @@ jobs:
 
       # quern is installed on top of the synced env, so `uv run` must NOT re-sync afterwards: a sync
       # is exact, and it would prune quern straight back out again as an extraneous package.
+      # QUERN_REGISTRY is deliberately unset: consume() falls back to the committed .quern/library.
       - name: Run the gate
-        env:
-          QUERN_REGISTRY: ${{ runner.temp }}/registry
         run: uv run --no-sync python -m ledger.check
