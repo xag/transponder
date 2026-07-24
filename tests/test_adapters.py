@@ -20,7 +20,7 @@ import sys
 
 import pytest
 
-from transponder import scope
+from transponder import env, scope
 
 CLAUDE = os.path.join(os.path.dirname(__file__), "..", "transponder", "hooks", "claude_code.py")
 
@@ -394,3 +394,77 @@ def test_the_note_never_refuses_anything(repo):
     for name in ("a.txt", "b.txt", "c.txt", "d.txt", "e.txt"):
         assert claude_edit(repo, "A", name).returncode == 0
         assert claude_prompt(repo, "A").returncode == 0
+
+
+# --- the lease, and the mechanism that was never invoked -------------------------------------------
+#
+# scope.renew's docstring said "a tool call IS the activity" and nothing on the hook path called it.
+# Every claim expired fifteen minutes after it was made, under agents that had not stopped working.
+# These tests drive the REAL hook subprocess, because that is the only thing that would have caught
+# it: renew() itself was always correct, and any test of renew() passed throughout.
+
+
+def _age_claim(session, seconds):
+    """Push a claim's clock back, the way waiting would. Faster than waiting, and it is the claim
+    ON DISK that is aged — so the hook subprocess, which shares no memory with this test, reads
+    exactly the state a real elapsed lease would leave."""
+    path = env.claim_path(session)
+    with open(path, encoding="utf-8") as f:
+        claim = json.load(f)
+    for field in ("acquired_at", "renewed_at", "expires_at"):
+        claim[field] -= seconds
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(claim, f)
+    return claim
+
+
+def test_a_tool_call_renews_a_lease_that_is_going_stale(repo):
+    """THE WIRING, which is the whole point of this test existing as a subprocess test. A session
+    that keeps working must not fall off the map: a lapsed claim reads as free ground, so the next
+    agent to declare that region is handed it with a green light while somebody is still in it."""
+    scope.declare(repo, "A", ["a.txt"], "working")
+    aged = _age_claim("A", scope.RENEW_AFTER + 60)
+
+    assert claude_edit(repo, "A", "a.txt").returncode == 0
+    after = scope.mine("A")
+    assert after is not None, "the claim vanished instead of being renewed"
+    assert after["expires_at"] > aged["expires_at"], (
+        "a tool call did not renew a lease that was more than half gone — the map drops working "
+        "agents, and declare_work then hands their region away")
+
+
+def test_a_prompt_renews_too(repo):
+    """A session parked on a question makes no tool calls, and its uncommitted work is still there."""
+    scope.declare(repo, "A", ["a.txt"], "working")
+    aged = _age_claim("A", scope.RENEW_AFTER + 60)
+
+    assert claude_prompt(repo, "A").returncode == 0
+    assert scope.mine("A")["expires_at"] > aged["expires_at"]
+
+
+def test_a_fresh_lease_is_not_rewritten_on_every_call(repo):
+    """env.write_claim fsyncs. This runs on every tool call of every session on the machine, and
+    that path was made cheap on purpose after four incidents — buying liveness with a synchronous
+    disk flush per call is paying in the currency this project has already been burned for."""
+    scope.declare(repo, "A", ["a.txt"], "working")
+    before = scope.mine("A")["renewed_at"]
+
+    for name in ("a.txt", "b.txt", "c.txt"):
+        claude_edit(repo, "A", name)
+    assert scope.mine("A")["renewed_at"] == before, (
+        "a fresh lease was rewritten; the threshold is not being consulted")
+
+
+def test_an_expired_claim_is_never_resurrected(repo):
+    """The one thing renewal must NOT do. A lapsed region may already belong to somebody else, and
+    bringing it back would double-book the single thing the registry exists to keep single."""
+    scope.declare(repo, "A", ["api/**"], "the rate limiter")
+    _age_claim("A", scope.LEASE_SECONDS + 60)
+    assert scope.mine("A") is None, "the fixture did not actually expire the claim"
+
+    os.makedirs(os.path.join(repo, "api"), exist_ok=True)
+    assert scope.declare(repo, "B", ["api/**"], "took over")["status"] == "granted"
+    assert claude_edit(repo, "A", os.path.join("api", "x.py")).returncode == 0
+
+    live = {c["session"] for c in scope.live()}
+    assert live == {"B"}, f"an expired claim came back and double-booked the region: {live}"

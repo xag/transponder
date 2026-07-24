@@ -373,11 +373,49 @@ def release_under(session: str, root: str) -> None:
 
 def renew(session: str) -> None:
     """Activity renews the lease, exactly as in v1 §3 — a tool call IS the activity, and an agent
-    that has gone home stops renewing and lets go on its own."""
+    that has gone home stops renewing and lets go on its own.
+
+    An EXPIRED claim is not renewed, and that is load-bearing rather than incidental: `mine` reads
+    through `live()`, which filters on `expires_at`. A lapsed region may already have been granted
+    to somebody else, so resurrecting it here would double-book the one thing the registry exists
+    to keep single. A session that let its lease go declares again, and finds out.
+    """
     claim = mine(session)
     if claim:
         _write(session, claim["scope"], claim.get("intent", ""), env.now(),
                claim["acquired_at"], repo=claim.get("repo", ""), until=claim.get("until", 0.0))
+
+
+RENEW_AFTER = LEASE_SECONDS / 2
+
+
+def keep_alive(session: str) -> bool:
+    """Renew if the lease is more than half gone. True if it was written.
+
+    THE SENTENCE ABOVE `renew` WAS NOT TRUE OF THIS SYSTEM. "A tool call IS the activity" described
+    a mechanism nothing invoked: `renew` was called from the demo and from nowhere else, so every
+    claim on every machine expired fifteen minutes after it was made, however hard the agent was
+    working. Found when the undeclared-writes note fired against a session that was holding six
+    paths — the note was right, the map was empty, and the claim had lapsed under a session that
+    had not stopped working for a moment. Two things follow from that, and the second is worse:
+    a working agent silently leaves the map, and `declare_work` then hands its region to the next
+    arrival with a green light.
+
+    It renews on a THRESHOLD rather than on every call because `env.write_claim` fsyncs, and this
+    runs on the hook path of every tool call of every session on the machine. That path was made
+    cheap on purpose (no git, no snapshots) after four incidents; putting a synchronous disk flush
+    back on it would be paying for liveness in the currency this project has already been burned
+    for. Half the lease bounds the write rate at one per session per ~450s and still cannot lapse:
+    an agent quiet for longer than half a lease renews on its next call, and one quiet for longer
+    than a whole lease has stopped, which is exactly what the lease is for.
+    """
+    claim = mine(session)
+    if not claim:
+        return False
+    if env.now() - claim.get("renewed_at", 0) < RENEW_AFTER:
+        return False
+    renew(session)
+    return True
 
 
 def _free_hint(anchor: str, others: list[dict]) -> list[str]:

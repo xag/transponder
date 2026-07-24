@@ -147,6 +147,8 @@ def pre_tool_use(payload: dict) -> None:
         return
     _record()
     session = payload.get("session_id") or "unknown"
+    scope.keep_alive(session)             # a tool call IS the activity — see scope.keep_alive for
+                                          # what that sentence was worth before anything called it
     # Remembered here, reported at the next prompt. It has to be RECORDED at the only event that
     # sees the write and REPORTED at the only event the model reads before acting; those are not
     # the same event, and trying to make them one is what produced a warning delivered after the
@@ -217,6 +219,11 @@ def user_prompt_submit(payload: dict) -> None:
     """
     _record()
     session = payload.get("session_id") or "unknown"
+    # A session parked on a question makes no tool calls, and its uncommitted work is still sitting
+    # in the tree. The human answering is activity. This cannot resurrect a claim that already
+    # lapsed during a long wait — renew() reads through live() — so a wait past the lease still
+    # ends with the agent off the map, which is the honest outcome.
+    scope.keep_alive(session)
     if note := common.shared_note(session, payload.get("cwd") or ""):
         _say(note)
     _read_side(session)

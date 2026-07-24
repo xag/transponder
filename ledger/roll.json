@@ -177,12 +177,17 @@
   {
     "path": "hyp-renewal-on-activity",
     "kind": "hypothesis",
-    "digest": "ca203582ba8a"
+    "digest": "f5f572582519"
   },
   {
     "path": "hyp-renewal-on-activity/kill-renewal",
     "kind": "falsification",
-    "digest": "19a3882ce698"
+    "digest": "3f6a4e18381f"
+  },
+  {
+    "path": "hyp-renewal-on-activity/kill-renewal-unwired",
+    "kind": "falsification",
+    "digest": "89219db6a8fd"
   },
   {
     "path": "hyp-serialising-shells-does-not-starve",
@@ -428,6 +433,31 @@
     "path": "release",
     "kind": "gate",
     "digest": "17082cb69446"
+  },
+  {
+    "path": "renewal-was-never-wired",
+    "kind": "decision",
+    "digest": "6dea1fd89b58"
+  },
+  {
+    "path": "renewal-was-never-wired/alt-drop-leases-entirely",
+    "kind": "alternative",
+    "digest": "abaa10b90b73"
+  },
+  {
+    "path": "renewal-was-never-wired/alt-fix-renew-and-trust-the-docstring",
+    "kind": "alternative",
+    "digest": "de2c1fd53eed"
+  },
+  {
+    "path": "renewal-was-never-wired/alt-just-lengthen-the-lease",
+    "kind": "alternative",
+    "digest": "156a476d416a"
+  },
+  {
+    "path": "renewal-was-never-wired/alt-renew-on-every-call",
+    "kind": "alternative",
+    "digest": "c70fd2251ddc"
   },
   {
     "path": "retract-the-subagent-debt",

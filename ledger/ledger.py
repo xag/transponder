@@ -1316,6 +1316,68 @@ DECISIONS = [
                                   "target, and undercounts on purpose"}),
          ]),
 
+    Node(id="renewal-was-never-wired", kind="decision",
+         links={"rests_on": ["the-courier-speaks-where-it-can-be-heard",
+                             "the-ask-goes-where-it-can-be-answered"]},
+         name="A mechanism is verified by its EFFECT, observed from outside — the third time a "
+              "documented mechanism turned out to be invoked by nothing",
+         payload={"rationale":
+                  "`scope.renew` said 'a tool call IS the activity, and an agent that has gone home "
+                  "stops renewing and lets go on its own'. Nothing on the hook path called it. The "
+                  "only caller in the tree was demo.py, which renews explicitly because 'no hook "
+                  "fires for this process'. So every claim on every machine expired 900s after it "
+                  "was made, under agents that had not stopped working.\n\n"
+                  "The second consequence is the serious one. A working agent silently leaves the "
+                  "map — then `declare_work` hands its live region to the next arrival with a green "
+                  "light and no conflict. Not double-booking is the registry's one job, and it was "
+                  "failing at it on any task longer than fifteen minutes.\n\n"
+                  "THIS IS THE THIRD OF EXACTLY THIS SHAPE. the-courier-speaks-where-it-can-be-heard: "
+                  "notes produced, recorded, asserted on in tests — printed to a debug log with no "
+                  "reader. there-is-no-warning-before-a-write: UserPromptSubmit routed in HANDLERS, "
+                  "absent from EVENTS, never fired once. Now renewal: defined, documented, invoked "
+                  "by nothing. Each was internally consistent, green under test, and described in "
+                  "the present tense by its own docstring. The common defect: every check was "
+                  "phrased over the mechanism's DEFINITION or its OUTPUT, while the failure was in "
+                  "its DELIVERY.\n\n"
+                  "So, generalising 'a channel is verified at the receiving end': A MECHANISM IS "
+                  "VERIFIED BY ITS EFFECT, OBSERVED FROM OUTSIDE THE PROCESS THAT PROVIDES IT. The "
+                  "test drives the real hook subprocess and asserts `expires_at` moved, against a "
+                  "claim aged on disk; it was confirmed by deleting the call and watching it go "
+                  "red. And a falsifier must be phrased so it can fire on ABSENCE, not only on "
+                  "inadequacy — `kill-renewal` asked for a recording of a call longer than the "
+                  "lease, which presumes the renewal exists, and sat green for weeks.\n\n"
+                  "Renewal is on a THRESHOLD (half the lease), not every call: `env.write_claim` "
+                  "fsyncs, and this is the hook path of every tool call of every session on the "
+                  "machine — the path deliberately stripped of git calls after four incidents. One "
+                  "write per session per ~450s, and a lease that still cannot lapse under an active "
+                  "agent. Expired claims are never resurrected: `renew` reads through `live()`, so "
+                  "a region that lapsed and was re-granted stays with whoever holds it."},
+         children=[
+             Node(id="alt-renew-on-every-call", kind="alternative",
+                  name="Renew unconditionally on every tool call",
+                  payload={"why": "a synchronous fsync on the hot path of every session on the "
+                                  "machine. That path was made cheap on purpose; buying liveness "
+                                  "with disk flushes is paying in the currency of #4, #7, #10 "
+                                  "and #11"}),
+             Node(id="alt-just-lengthen-the-lease", kind="alternative",
+                  name="Raise LEASE_SECONDS until claims outlast a session",
+                  payload={"why": "treats the symptom and inverts the meaning of the lease. An "
+                                  "unrenewed lease of ANY length expires; one long enough never to "
+                                  "expire is not a decay function, and a crashed agent then holds "
+                                  "its region until somebody notices by hand"}),
+             Node(id="alt-drop-leases-entirely", kind="alternative",
+                  name="Let claims live until finish_work releases them",
+                  payload={"why": "an agent that crashes, is killed, or forgets holds a region "
+                                  "forever. The lease is how the map decays toward the truth "
+                                  "without anybody tidying it"}),
+             Node(id="alt-fix-renew-and-trust-the-docstring", kind="alternative",
+                  name="Wire the call and rely on the existing unit tests",
+                  payload={"why": "that is the state this was found in. renew() was correct "
+                                  "throughout and every test of it passed; only a test that runs "
+                                  "the real hook and observes the claim from outside can tell a "
+                                  "wired mechanism from an unwired one"}),
+         ]),
+
     Node(id="an-anchor-is-checked-like-a-resource", kind="decision",
          name="Refuse a `repo` that is not a checkout — an unchecked anchor does not fail, it "
               "succeeds somewhere else",
@@ -1564,19 +1626,52 @@ HYPOTHESES = [
                            "already happened."}),
          ]),
 
+    # FALSIFIED 2026-07-24 — and NOT by the falsifier below, which could never have fired. Kept
+    # whole, because the gap between what it asked for and what was wrong is the finding.
     Node(id="hyp-renewal-on-activity", kind="hypothesis",
-         name="Renew-on-tool-call keeps live CLAIMS from lapsing mid-work",
+         meta={"amended": "f5f572582519 the claim is verbatim; what moved is its OUTCOME — marked "
+                          "falsified, with killed_by naming what actually killed it. The belief "
+                          "under test never changed, so this is not a supersession"},
+         name="[FALSIFIED] Renew-on-tool-call keeps live CLAIMS from lapsing mid-work",
          payload={"claim": "The claim lease (scope.LEASE_SECONDS) outlasts the longest single tool "
                            "call, so an active participant never falls off the map between calls — "
                            "the lock died, but leases survive as the decay rate of information, and "
                            "a participant that silently vanished from the map mid-task misleads "
                            "everyone reading it.",
-                  "cadence": "every hook call"},
+                  "cadence": "every hook call",
+                  "status": "falsified",
+                  "killed_by": "There was no renew-on-tool-call. `scope.renew` was called from "
+                               "demo.py and from nowhere else, so every claim on every machine "
+                               "expired 900s after it was made, under agents that had not stopped "
+                               "working. Found when the new undeclared-writes note fired against a "
+                               "session holding six paths: the note was right and the map was "
+                               "empty. See renewal-was-never-wired."},
          children=[
+             # The original, unedited. It asked for a flight recording of "a single call longer than
+             # the lease" — so it tests whether the renewal is SUFFICIENT, and presumes it exists.
+             # An absent mechanism produces no such recording, and this sat green for weeks.
              Node(id="kill-renewal", kind="falsification",
+                  meta={"amended": "3f6a4e18381f the criterion is untouched, deliberately — what "
+                                   "was added is the verdict ON it, that it could not fire. "
+                                   "Rewriting it would erase the evidence"},
                   payload={"claim": "A flight recording shows a lease lapsing between two tool "
                                     "calls of one still-active session (a single call longer than "
-                                    "the lease)."}),
+                                    "the lease).",
+                           "status": "could-not-fire",
+                           "note": "Retained as evidence. A falsifier phrased over the QUALITY of a "
+                                   "mechanism cannot report its ABSENCE, and absence is the failure "
+                                   "this project keeps having."}),
+             Node(id="kill-renewal-unwired", kind="falsification",
+                  payload={"claim": "The lease of a session that is still making tool calls does "
+                                    "not advance. Asserted end-to-end, against the real hook "
+                                    "subprocess, over a claim aged past the renewal threshold on "
+                                    "disk: if `expires_at` does not move, renewal is not on the "
+                                    "path — whatever the code defines.",
+                           "fired_on": "2026-07-24",
+                           "note": "Phrased over the EFFECT, observed from outside, so it fires on "
+                                   "an unwired mechanism exactly as it does on a broken one. Lives "
+                                   "as test_a_tool_call_renews_a_lease_that_is_going_stale, and "
+                                   "was verified by deleting the call and watching it go red."}),
          ]),
 
     Node(id="hyp-the-ask-lands-when-it-is-answerable", kind="hypothesis",
