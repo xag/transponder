@@ -16,7 +16,12 @@ dependencies = []
 transponder-tray = "transponder.tray:main"
 
 [project.optional-dependencies]
-mcp = ["mcp[cli]>=1.2"]
+# CAPPED BELOW 2. mcp 2.0.0 removed `mcp.server.fastmcp`, which transponder/server.py
+# imports at module scope. This server is what an agent asks before it edits a shared
+# checkout, so the failure mode of an unbounded pin is specific: the map goes quiet on
+# whoever reinstalls next, and the agent that cannot declare is exactly the one nobody
+# is told about. Lift by porting to the 2.x import path, never by widening the range.
+mcp = ["mcp[cli]>=1.2,<2"]
 flight = ["flight-recorder @ git+https://github.com/xag/flight-recorder"]
 tray = ["pystray>=0.19", "pillow>=10"]
 
