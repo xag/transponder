@@ -6,8 +6,11 @@
 THREE OUTCOMES, THREE EXIT CODES, and the distinction is the point:
 
     0   green — every rule holds and the roll is written
-    1   RED — something unsound is in front of the gate, or an entry left the
-        record without saying so. The ledger is fine; what it records is not
+    1   RED — something unsound is in front of the gate that nobody accounted for,
+        an expectation outlived the red it excused, or an entry left the record
+        without saying so. The ledger is fine; what it records is not.
+        NOT on red as such: a red the node itself expects, by rule name in
+        meta['expected:<rule>'], is a debt carried on purpose and prints red*
     2   CANNOT CHECK — quern is missing, the file does not parse, the pinned
         package is not in the registry. Nothing was judged
 
@@ -61,7 +64,7 @@ def _load():
     exception with an actionable sentence attached."""
     try:
         from quern.roll import audit, write
-        from quern.tree import run_rules, said_words
+        from quern.tree import expectations, reckon, run_rules, said_words
     except ModuleNotFoundError as e:
         raise CannotCheck(
             f"quern is not on this interpreter's path ({e.name}).\n"
@@ -80,7 +83,7 @@ def _load():
             f"  If that names a PINNED package, the registry does not carry it: check "
             f"QUERN_REGISTRY\n"
             f"  (default ../quern-registry, which is a checkout of xag/fleet-registry).") from e
-    return LEDGER, run_rules, said_words, audit, write
+    return LEDGER, run_rules, said_words, audit, write, reckon, expectations
 
 
 def _limit(tree) -> int | None:
@@ -107,7 +110,8 @@ def _crowded(tree, said_words, limit: int) -> list[tuple[str, int]]:
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     try:
-        LEDGER, run_rules, said_words, audit, write = _load()
+        (LEDGER, run_rules, said_words, audit, write,
+         reckon, expectations) = _load()
     except CannotCheck as e:
         print(f"CANNOT CHECK — {e}")
         print("\nNothing was judged, so this is not a verdict on the ledger.")
@@ -120,15 +124,27 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     results = run_rules(LEDGER)
-    failures = [r for r in results if not r.ok]
+    # NOT `any red`. This ledger ships red by design while a debt is carried (see the
+    # roll note below, which already says so), and gating on red means a check that
+    # fails on every run it will ever have - which tells nobody anything when it
+    # fails. quern#42. `news` is red nobody accounted for; `carried` is red a node
+    # declares it expects, by rule name, in meta['expected:<rule>']; `stale` is an
+    # expectation whose red has gone and must be withdrawn rather than left standing.
+    news, carried, stale = reckon(LEDGER, results)
+    failures = news
     # A tombstone with no `was` excuses nothing - the right way round, because
     # forgetting it leaves the check red, never green.
     excused = {n.payload["was"] for _, n in LEDGER.walk("")
                if n.kind == "tombstone" and n.payload.get("was")}
     removals, looked = audit(LEDGER, _ROOT, _ROLL, _REV, excused)
 
+    for r in carried:
+        why = expectations(LEDGER.get(r.node)).get(r.rule, "") if LEDGER.get(r.node) else ""
+        print(f"red* {r.rule} @ {r.node}: {why or 'carried on purpose'}")
     for r in failures:
         print(f"RED  {r.rule} @ {r.node}: {r.detail}")
+    for line in stale:
+        print(f"STALE {line}")
     for line in removals:
         print(f"GONE {line}")
     if not looked:
@@ -152,15 +168,20 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {words:4d}/{limit}  {path}")
         print("  `--brief` sorts every entry by weight; the first line is the first to cut.")
 
-    if not failures and not removals:
-        print(f"\ngreen - {len(results)} rules, nothing unsound in front of the "
-              "gate; roll written")
+    if not failures and not stale and not removals:
+        carried_note = f", {len(carried)} red carried on purpose" if carried else ""
+        print()
+        print(f"green - {len(results)} rules, nothing unaccounted for in front "
+              f"of the gate{carried_note}; roll written")
         return 0
 
     gate_red = any(r.rule == "nothing-unsound-passes-a-gate" for r in failures)
     print()
     if failures:
-        print(f"{len(failures)} rule(s) red.")
+        print(f"{len(failures)} rule(s) red and unaccounted for.")
+    if stale:
+        print(f"{len(stale)} expectation(s) outlived the red they excused - withdraw "
+              "the note, or the licence outlives its reason.")
     if gate_red:
         print("The gate is RED: an unsound thing is on the write path of every")
         print("session on the machine. Discharge the debt by doing the work its")
