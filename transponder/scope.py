@@ -64,19 +64,31 @@ def resolve(resource: str, anchor: str) -> str | None:
 
     subtree = r.endswith("/**")
     base = r[:-3] if subtree else r
+    # A DIRECTORY IS ITS SUBTREE (2026-08-19). A session declared `tests/` in four
+    # repos; every declare was granted and echoed, and every write beneath was then
+    # reported as undeclared — because the trailing slash was stripped and the
+    # directory became a "single file" no write can ever land on. A claim that means
+    # less than the sentence the agent typed is this library's founding complaint,
+    # aimed at itself. So the trailing slash says subtree, and a base that IS a
+    # directory on disk is one too, however it was spelt; only a path that names no
+    # directory stays a single-file claim.
+    trailing_dir = not subtree and base.endswith("/") and base.rstrip("/")
     base = base.rstrip("/")
     if not base or any(ch in base for ch in "*?[") or ":" in base.replace(":/", "", 1)[2:]:
         return None
     if not os.path.isabs(base.replace("/", os.sep)) and ":" not in base[:2]:
         base = os.path.join(anchor, base)
-    return canon(base) + ("/**" if subtree else "")
+    c = canon(base)
+    if not subtree and (trailing_dir or os.path.isdir(c.replace("/", os.sep))):
+        subtree = True
+    return c + ("/**" if subtree else "")
 
 
 def why_bad(resource: str) -> str:
-    return (f"{resource!r}: a resource is a filesystem path — one file, or a subtree spelt "
-            f"`dir/**`, or `**` for the whole checkout. A glob has no decidable overlap, and a "
-            f"named resource is either secretly a file (git's index is `<repo>/.git/index` — "
-            f"reserve that) or a contract no witness can check.")
+    return (f"{resource!r}: a resource is a filesystem path — one file, or a subtree (`dir/**`, "
+            f"`dir/`, or any path that IS a directory), or `**` for the whole checkout. A glob "
+            f"has no decidable overlap, and a named resource is either secretly a file (git's "
+            f"index is `<repo>/.git/index` — reserve that) or a contract no witness can check.")
 
 
 def why_not_a_checkout(anchor: str) -> str | None:

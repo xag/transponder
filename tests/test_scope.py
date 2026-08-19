@@ -65,6 +65,28 @@ def test_overlap_is_decidable_or_it_is_refused(repo):
     assert scope.resolve("**", repo) == scope.canon(repo) + "/**"
 
 
+def test_a_directory_is_its_subtree_never_a_single_file(repo):
+    """The 2026-08-19 incident, reproduced. A session declared `tests/`, `tools/`,
+    `docs/` across four repos; the map granted every one, echoed it back, and then
+    reported every write beneath them as undeclared — a claim that quietly meant
+    less than the sentence the agent typed, which is this library's own founding
+    complaint aimed at itself. Nobody writes bytes to a directory, so a resource
+    naming one (trailing slash, or an existing directory) is its subtree; a file
+    stays a file."""
+    dirs(repo, "api")
+    covered = scope.resolve("api/", repo)
+    assert covered == scope.canon(repo) + "/api/**", "a trailing slash says subtree"
+    assert scope.covers([covered], scope.canon(repo) + "/api/x.py")
+    assert scope.resolve("api", repo) == scope.canon(repo) + "/api/**", \
+        "an existing directory IS its subtree, however it is spelt"
+    with open(os.path.join(repo, "api", "x.py"), "w"):
+        pass
+    assert scope.resolve("api/x.py", repo) == scope.canon(repo) + "/api/x.py", \
+        "a file stays a single-file claim"
+    assert scope.resolve("newdir/", repo) == scope.canon(repo) + "/newdir/**", \
+        "a directory that does not exist yet, spelt with the slash, is a subtree"
+
+
 def test_an_anchor_that_is_not_a_checkout_is_refused(repo):
     """The anchor was the last unchecked input, and an unchecked anchor does not fail — it succeeds
     somewhere else. Two agents declared with `repo="myapp"`, a NAME: it was joined to the server's

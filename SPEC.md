@@ -49,7 +49,13 @@ A **scope** is a set of **resources**; a resource is a **canonical absolute path
 | `<canonical-path>/**`  | a subtree  |
 
 Agents spell paths relative to the checkout they name (`api/**` for `<repo>/api/**`; `**` alone is
-the whole checkout), and the implementation canonicalises before storing. **Overlap is the prefix
+the whole checkout), and the implementation canonicalises before storing. **A path that names a
+directory resolves to its subtree** — `api/` and a bare `api` that is a directory on disk both
+store as `<repo>/api/**` — because nobody writes bytes to a directory, so a single-file claim on
+one can never cover any write. That rule was learned, not designed: a session declared `tests/` in
+four repos, was granted every claim, and had every write beneath reported as undeclared — a map
+agreeing to less than the sentence the agent typed, which is this spec's founding complaint aimed
+at itself (2026-08-19). **Overlap is the prefix
 relation** — decidable always — so a conflict MUST name the exact **intersection**: "come back
 narrower" is computed, never guessed.
 

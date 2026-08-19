@@ -80,7 +80,8 @@ def declare_work(repo: str, session_id: str, paths: list[str], doing: str,
                a bare name resolves against this server's working directory, and a claim under a
                directory that does not exist is an agreement with nobody.
       paths    the files and folders you will WRITE TO, in the checkout you will write to — not
-               necessarily the one you are sitting in. `src/api/**` a subtree, `src/api/x.py` one
+               necessarily the one you are sitting in. `src/api/**` or `src/api/` a subtree (a
+               path that IS a directory means its subtree, however spelt), `src/api/x.py` one
                file, `**` the whole checkout, `.git/index` the staging area (reserve it around a
                commit, so `git add -A` cannot sweep up a neighbour's half-finished work).
       doing    what you are actually doing, in a line. "replacing the auth middleware return type"
