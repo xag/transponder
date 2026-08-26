@@ -2,12 +2,12 @@
   {
     "path": "a-channel-they-can-repurpose",
     "kind": "decision",
-    "digest": "f7dfb30a9be8"
+    "digest": "f3ee1b96ced6"
   },
   {
     "path": "a-channel-they-can-repurpose/alt-no-channel-file-an-issue",
     "kind": "alternative",
-    "digest": "49f62b20b239"
+    "digest": "79b27af38dcd"
   },
   {
     "path": "a-channel-they-can-repurpose/alt-push-everything",
@@ -112,7 +112,7 @@
   {
     "path": "cursor-settles-late",
     "kind": "debt",
-    "digest": "cdd5bf4f58a5"
+    "digest": "841ba42ee640"
   },
   {
     "path": "cursor-settles-late/verify-cursors-post-event",
@@ -122,7 +122,7 @@
   {
     "path": "filesystem-is-the-namespace",
     "kind": "decision",
-    "digest": "16934fb01d44"
+    "digest": "b42a53d2e3dc"
   },
   {
     "path": "filesystem-is-the-namespace/alt-freeform-with-registry",
@@ -262,12 +262,12 @@
   {
     "path": "information-not-exclusion",
     "kind": "decision",
-    "digest": "3afea7ee128f"
+    "digest": "bae34c212ed0"
   },
   {
     "path": "information-not-exclusion/alt-demote-stop-ask-to-a-note",
     "kind": "alternative",
-    "digest": "aaea6447fd72"
+    "digest": "78522c99e647"
   },
   {
     "path": "information-not-exclusion/alt-gate-only-declared-writes",
@@ -322,7 +322,7 @@
   {
     "path": "mcp-is-watched-never-gated/alt-matcher-lists-writing-mcp-tools",
     "kind": "alternative",
-    "digest": "b64c016cc822"
+    "digest": "3e4c3f4b56d9"
   },
   {
     "path": "mcp-writes-settle-late",
@@ -432,7 +432,7 @@
   {
     "path": "release",
     "kind": "gate",
-    "digest": "17082cb69446"
+    "digest": "34449e84251e"
   },
   {
     "path": "renewal-was-never-wired",

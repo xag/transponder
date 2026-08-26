@@ -464,12 +464,13 @@ DECISIONS = [
                                   "it waits for a repo, which is a blast radius no part of this "
                                   "protocol asked for"}),
              Node(id="alt-matcher-lists-writing-mcp-tools", kind="alternative",
+             meta={"amended": "3e4c3f4b56d9 wording only: aphorism replaced with a plain statement, claim unchanged"},
                   name="Enumerate the MCP tools that can write, and gate only those",
-                  payload={"why": "observe-do-not-predict, wearing a new hat. MCP tool names are "
-                                  "open-ended and vendor-supplied: the list is `mcp__ide__"
-                                  "executeCode` today and something nobody has written yet "
-                                  "tomorrow. This is `alt-widen-the-lists` for a namespace that "
-                                  "grows faster than the shell's did"}),
+                  payload={"why": "observe-do-not-predict, in a new form. MCP tool names are "
+                                  "open-ended and vendor-supplied: the list is "
+                                  "`mcp__ide__executeCode` today and something nobody has "
+                                  "written yet tomorrow. This is `alt-widen-the-lists` for a "
+                                  "namespace that grows faster than the shell's did"}),
              Node(id="alt-document-the-boundary-only", kind="alternative",
                   name="State the boundary in SPEC.md and ship no code",
                   payload={"why": "honest, and it was the issue's own minimum. Rejected because the "
@@ -486,41 +487,41 @@ DECISIONS = [
     # — but it was reached on a mechanism that did not exist and was only made real that day. The
     # correction, and the rule that follows from it, are in the-courier-speaks-where-it-can-be-heard.
     Node(id="information-not-exclusion", kind="decision",
-         meta={"amended": "3afea7ee128f tightened again, at 600/600 with no headroom left; every claim kept"},
+         meta={"amended": "bae34c212ed0 wording only: aphorism replaced with a plain statement, claim unchanged"},
          name="Scratch the mutex entirely: nothing is ever refused, and information is the model",
          payload={"rationale":
-                  "The user's sentence, which the first trial build implemented only by half: 'we "
-                  "are not blocking agents, just giving them a channel to negotiate and "
-                  "collaboratively prevent breaking each other's work.' The build kept four kinds "
-                  "of refusal anyway — the v1 mutex for undeclared sessions, a teaching-refusal, a "
-                  "scope gate on declared writes, a v1-lock check on scoped agents — arguing "
-                  "silence must stay safe for agents who never heard of the protocol. That argument "
-                  "had a flaw the user exposed by hitting it: THE COURIER REACHES NON-PARTICIPANTS "
-                  "TOO. The hook prints into every agent's context on every tool call, so an "
-                  "undeclared agent can be TOLD another is mid-change without being REFUSED "
-                  "anything. Making the cooperation bet for declared agents while refusing it for "
-                  "undeclared ones was incoherent — same bet, make it everywhere. And the race that "
-                  "interrupted the trial's first pilot declaration was the kept-mutex biting, on "
-                  "cue.\n\n"
-                  "v1 is deleted, not superseded-in-place: the lease-lock, the pessimistic hold, "
-                  "the tickets and the waiter, the takeover handoff, the Cursor adapter, and every "
-                  "test that pinned refusal behaviour. What remains never refuses: the claims map "
-                  "(a conflicting declare is not RECORDED, the map stays coherent; no call is "
-                  "blocked), the witness (what happened, violations named to their author, remedy "
-                  "attached), the courier (the shared-checkout intro, the pre-write heads-up), and "
-                  "the drift check. Deadlock ceases by construction — nothing blocks, nothing "
-                  "cycles — and §5's extend-deadlock apparatus evaporates.\n\n"
-                  "ONE deliberate exception, flagged and accepted: the Stop boundary may block a "
-                  "DEPARTING session's handback, once, to ask commit/ignore/stash of a dirty tree. "
-                  "It refuses no other agent anything; demoted to a note it would be prose that "
-                  "cannot fire.\n\n"
-                  "Knowingly given up: exclusion. Two agents CAN now write one region; the witness "
-                  "names it after the fact. Every failure in this library's recorded history was an "
-                  "agent that did not know another was there — ignorance, not malice — and "
-                  "information cures ignorance at a fraction of the price of a mutex that took the "
-                  "machine down four times (#4, #7, #10, #11) and whose only two genuine "
-                  "collisions-avoided were between sessions in DIFFERENT directories. Deterrence is "
-                  "NOT the mechanism (no memory across sessions, no reputation, no future to lose): "
+                  "The user's sentence, which the first trial build implemented only by half: "
+                  "'we are not blocking agents, just giving them a channel to negotiate and "
+                  "collaboratively prevent breaking each other's work.' The build kept four "
+                  "kinds of refusal anyway — the v1 mutex for undeclared sessions, a "
+                  "teaching-refusal, a scope gate on declared writes, a v1-lock check on scoped "
+                  "agents — arguing silence must stay safe for agents who never heard of the "
+                  "protocol. That argument had a flaw the user exposed by hitting it: THE "
+                  "COURIER REACHES NON-PARTICIPANTS TOO. The hook prints into every agent's "
+                  "context on every tool call, so an undeclared agent can be TOLD another is "
+                  "mid-change without being REFUSED anything. Making the cooperation bet for "
+                  "declared agents while refusing it for undeclared ones was incoherent — same "
+                  "bet, make it everywhere. And the race that interrupted the trial's first "
+                  "pilot declaration was the kept-mutex biting, on cue.\n\nv1 is deleted, not "
+                  "superseded-in-place: the lease-lock, the pessimistic hold, the tickets and "
+                  "the waiter, the takeover handoff, the Cursor adapter, and every test that "
+                  "pinned refusal behaviour. What remains never refuses: the claims map (a "
+                  "conflicting declare is not RECORDED, the map stays coherent; no call is "
+                  "blocked), the witness (what happened, violations named to their author, "
+                  "remedy attached), the courier (the shared-checkout intro, the pre-write "
+                  "heads-up), and the drift check. Deadlock ceases by construction — nothing "
+                  "blocks, nothing cycles — and §5's extend-deadlock apparatus "
+                  "evaporates.\n\nONE deliberate exception, flagged and accepted: the Stop "
+                  "boundary may block a DEPARTING session's handback, once, to ask "
+                  "commit/ignore/stash of a dirty tree. It refuses no other agent anything; "
+                  "demoted to a note it would carry no check.\n\nKnowingly given up: exclusion. "
+                  "Two agents CAN now write one region; the witness names it after the fact. "
+                  "Every failure in this library's recorded history was an agent that did not "
+                  "know another was there — ignorance, not malice — and information cures "
+                  "ignorance at a fraction of the price of a mutex that took the machine down "
+                  "four times (#4, #7, #10, #11) and whose only two genuine collisions-avoided "
+                  "were between sessions in DIFFERENT directories. Deterrence is NOT the "
+                  "mechanism (no memory across sessions, no reputation, no future to lose): "
                   "visibility plus a witness is."},
          links={"supersedes": ["hold-the-lock-through-the-unknown", "a-refusal-must-be-actionable",
                                "waiting-is-a-subscription", "the-ticket-must-survive-the-shell",
@@ -546,36 +547,38 @@ DECISIONS = [
                                   "the declared write keeps the information value of that moment "
                                   "without the cage"}),
              Node(id="alt-demote-stop-ask-to-a-note", kind="alternative",
+             meta={"amended": "78522c99e647 wording only: aphorism replaced with a plain statement, claim unchanged"},
                   name="Make even the Stop dirty-tree ask a note, for purity",
-                  payload={"why": "a note at the moment a session is ALREADY LEAVING is prose that "
-                                  "cannot fire — the session is gone before anyone reads it. The "
+                  payload={"why": "a note at the moment a session is ALREADY LEAVING carries no "
+                                  "check — the session is gone before anyone reads it. The "
                                   "ask-once blocks nobody else, ever, and #11's lesson (three "
-                                  "routes: commit / ignore / stash) survives only if it can insist "
-                                  "on an answer exactly once"}),
+                                  "routes: commit / ignore / stash) survives only if it can "
+                                  "insist on an answer exactly once"}),
          ]),
 
     Node(id="filesystem-is-the-namespace", kind="decision",
+    meta={"amended": "b42a53d2e3dc wording only: aphorism replaced with a plain statement, claim unchanged"},
          name="A scope resource is a canonical filesystem path — one namespace, one overlap relation",
          payload={"rationale":
-                  "SPEC-v2's first draft let a scope hold resources from several namespaces: paths, "
-                  "plus opaque names (`git:index`, `port:3000`) overlapping by string equality. The "
-                  "user's question killed it: if scope is free-form, whom do we inform, without "
-                  "broadcasting? Routing was never the problem — the claim store is the routing "
-                  "table and overlap computes the addressees — but ALIASING was: two spellings of "
-                  "one real resource (`port:3000` vs `dev-server`) read as disjoint, both granted, "
-                  "and the collision lands in the world with the system reporting calm. The failure "
-                  "mode of free-form is not noise, it is silence.\n\n"
-                  "So the namespace is the local filesystem, whole: a resource is a canonical "
-                  "absolute path (realpath+normcase — the same canonicalisation the v1 lockfile has "
-                  "always used), one file or a subtree. Aliasing dies by construction: case, "
-                  "symlinks, junctions, `..` all resolve to one string. Overlap is the prefix "
-                  "relation, so a conflict names the exact INTERSECTION and 'come back narrower' is "
-                  "computed rather than guessed.\n\n"
-                  "And the special resources were never special: `git:index` IS `<repo>/.git/index`, "
-                  "`git:HEAD` IS `<repo>/.git/HEAD`. The founding incident's cure — reserve the "
-                  "index before you commit — needs no second kind of resource, no second overlap "
-                  "relation to get wrong, and the witness already sees the sweep through the "
-                  "porcelain."},
+                  "SPEC-v2's first draft let a scope hold resources from several namespaces: "
+                  "paths, plus opaque names (`git:index`, `port:3000`) overlapping by string "
+                  "equality. The user's question killed it: if scope is free-form, whom do we "
+                  "inform, without broadcasting? Routing was never the problem — the claim "
+                  "store is the routing table and overlap computes the addressees — but "
+                  "ALIASING was: two spellings of one real resource (`port:3000` vs "
+                  "`dev-server`) read as disjoint, both granted, and the collision lands in the "
+                  "world with the system reporting calm. The failure mode of free-form is not "
+                  "noise, it is silence.\n\nSo the namespace is the local filesystem, whole: a "
+                  "resource is a canonical absolute path (realpath+normcase — the same "
+                  "canonicalisation the v1 lockfile has always used), one file or a subtree. "
+                  "Aliasing is eliminated by construction: case, symlinks, junctions, `..` all "
+                  "resolve to one string. Overlap is the prefix relation, so a conflict names "
+                  "the exact INTERSECTION and 'come back narrower' is computed rather than "
+                  "guessed.\n\nAnd the special resources were never special: `git:index` IS "
+                  "`<repo>/.git/index`, `git:HEAD` IS `<repo>/.git/HEAD`. The founding "
+                  "incident's cure — reserve the index before you commit — needs no second kind "
+                  "of resource, no second overlap relation to get wrong, and the witness "
+                  "already sees the sweep through the porcelain."},
          children=[
              Node(id="alt-per-namespace-overlap", kind="alternative",
                   name="Several namespaces, each with its own overlap relation",
@@ -1100,45 +1103,47 @@ DECISIONS = [
     # error propagated into four other places before the user caught it, which is the more useful
     # lesson — a rationale nobody checks gets quoted until it sounds true.
     Node(id="a-channel-they-can-repurpose", kind="decision",
-         meta={"amended": "f7dfb30a9be8 tightened under the 600-word budget; every claim kept"},
+         meta={"amended": "f3ee1b96ced6 wording only: aphorism replaced with a plain statement, claim unchanged"},
          name="An addressed message substrate — direct pushes, broadcast and channel are pull-only; "
               "a transponder, not a chatter phone",
          payload={"rationale":
-                  "The map answers WHERE, plus one line of why. It cannot carry what an agent is "
-                  "actually doing, and that is what the other agent needs most — two sessions in "
-                  "one checkout are not rivals, they are building one app, and knowing a rewrite of "
-                  "the auth middleware is COMING changes how you write the module beside it: "
-                  "future-proof rather than merely correct. Nothing here could say that; a conflict "
-                  "ended with 'file an issue for their part', which routes a live negotiation "
-                  "through a human and a day.\n\n"
-                  "The user's framing decided the shape: an item left in the cabin, the way ground "
-                  "control solves a problem with what is aboard. A general channel can be "
-                  "repurposed for the case nobody anticipated; a special-purpose protocol only "
-                  "solves the one we imagined. So free-form messages, addressed three ways — "
-                  "broadcast (this machine), channel (one checkout), direct (one agent).\n\n"
-                  "IT STAYS A TRANSPONDER. Direct pushes; broadcast and channel are PULL-ONLY. Not "
+                  "The map answers WHERE, plus one line of why. It cannot carry what an agent "
+                  "is actually doing, and that is what the other agent needs most — two "
+                  "sessions in one checkout are not rivals, they are building one app, and "
+                  "knowing a rewrite of the auth middleware is COMING changes how you write the "
+                  "module beside it: future-proof rather than merely correct. Nothing here "
+                  "could say that; a conflict ended with 'file an issue for their part', which "
+                  "routes a live negotiation through a human and a day.\n\nThe user's framing "
+                  "decided the shape: an item left in the cabin, the way ground control solves "
+                  "a problem with what is aboard. A general channel can be repurposed for the "
+                  "case nobody anticipated; a special-purpose protocol only solves the one we "
+                  "imagined. So free-form messages, addressed three ways — broadcast (this "
+                  "machine), channel (one checkout), direct (one agent).\n\nIT STAYS A "
+                  "TRANSPONDER. Direct pushes; broadcast and channel are PULL-ONLY. Not "
                   "squeamishness about volume: chat traffic and the violation alarm share one "
-                  "delivery path, and an agent taught to skim the channel skims the alarm with it. "
-                  "The oldest lesson here is that a note printed forever is a note nobody reads. An "
-                  "agent that wants the room asks — and one that has been hit once will ask.\n\n"
-                  "Storage is an append-only log per address with a per-reader cursor, so reading "
-                  "is NOT destructive: it marks the message read for you and leaves it standing for "
-                  "everyone else. A queue that deletes on read cannot serve two addressees, and "
-                  "cannot be re-read by an agent checking what it was told.\n\n"
-                  "STATED LIMIT, or it will be discovered as a hang: there is no wake-up. A reply "
-                  "lands when the other side next fires a hook, or never, if it has finished. "
-                  "Letters, not conversation — it carries 'I will need api/** when you are done' "
-                  "and cannot carry a handshake. Sender identity and current claims are stamped on "
-                  "every message, so an assertion about the map can be checked against it rather "
-                  "than believed."},
+                  "delivery path, and an agent taught to skim the channel skims the alarm with "
+                  "it. The oldest lesson here is that a note printed on every run stops being "
+                  "read. An agent that wants the room asks — and one that has been hit once "
+                  "will ask.\n\nStorage is an append-only log per address with a per-reader "
+                  "cursor, so reading is NOT destructive: it marks the message read for you and "
+                  "leaves it standing for everyone else. A queue that deletes on read cannot "
+                  "serve two addressees, and cannot be re-read by an agent checking what it was "
+                  "told.\n\nSTATED LIMIT, or it will be discovered as a hang: there is no "
+                  "wake-up. A reply lands when the other side next fires a hook, or never, if "
+                  "it has finished. Letters, not conversation — it carries 'I will need api/** "
+                  "when you are done' and cannot carry a handshake. Sender identity and current "
+                  "claims are stamped on every message, so an assertion about the map can be "
+                  "checked against it rather than believed."},
          children=[
              Node(id="alt-no-channel-file-an-issue", kind="alternative",
+             meta={"amended": "79b27af38dcd wording only: aphorism replaced with a plain statement, claim unchanged"},
                   name="Keep the status quo: a conflict tells the asker to take a narrower scope "
                        "and file an issue",
-                  payload={"why": "what exists, and it is the absence of a channel wearing a "
-                                  "procedure. It answers a live question — 'can I have this, and "
-                                  "when?' — by sending one agent away to write a ticket for a human "
-                                  "to read tomorrow, while the other agent is right there"}),
+                  payload={"why": "what exists, and it is the absence of a channel, replaced by "
+                                  "a procedure. It answers a live question — 'can I have this, "
+                                  "and when?' — by sending one agent away to write a ticket for "
+                                  "a human to read tomorrow, while the other agent is right "
+                                  "there"}),
              Node(id="alt-push-everything", kind="alternative",
                   name="Deliver all traffic — broadcast and channel included — into every agent's "
                        "context on every hook call",
@@ -1713,20 +1718,21 @@ DEBTS = [
     Node(
         id="cursor-settles-late",
         kind="debt",
+        meta={"amended": "841ba42ee640 wording only: aphorism replaced with a plain statement, claim unchanged"},
         name="[RESOLVED: the adapter was deleted] The Cursor adapter held a read's lock until its "
              "next hook call",
         payload={
             "note":
-                "Adapter #1 settles the speculative lock at PostToolUse — the instant the command "
-                "returns. Cursor's post-tool event has NOT been verified against the real client, "
-                "and hand-rolling a vendor's wire format from memory is exactly the 'uninstrumented "
-                "fake' failure: a guess wearing the costume of an integration. So the Cursor adapter "
-                "settles LAZILY, at the start of its next hook call.\n\n"
-                "Between a read-only shell and whatever Cursor does next, that session therefore "
-                "holds a lock it does not need. It is bounded by the lease and by the next event, "
-                "but it is a live #4 risk that adapter #1 does not carry, and it is unsound. It is a "
-                "debt, not a hypothesis: nothing about it is uncertain — I know it is wrong, I know "
-                "why, and I know what would fix it.",
+                "Adapter #1 settles the speculative lock at PostToolUse — the instant the "
+                "command returns. Cursor's post-tool event has NOT been verified against the "
+                "real client, and hand-rolling a vendor's wire format from memory is exactly "
+                "the 'uninstrumented fake' failure: a guess presented as an integration. So the "
+                "Cursor adapter settles LAZILY, at the start of its next hook call.\n\nBetween "
+                "a read-only shell and whatever Cursor does next, that session therefore holds "
+                "a lock it does not need. It is bounded by the lease and by the next event, but "
+                "it is a live #4 risk that adapter #1 does not carry, and it is unsound. It is "
+                "a debt, not a hypothesis: nothing about it is uncertain — I know it is wrong, "
+                "I know why, and I know what would fix it.",
         },
         params={
             "settles_at_post_tool": Quantity(
@@ -1880,31 +1886,30 @@ RETRACTIONS = [
 GATE = Node(
     id="release",
     kind="gate",
-    meta={"amended": "17082cb69446 the note records a red that should not have happened and what it "
-                     "teaches; `admits` is back to what it was, and nothing admitted was changed"},
+    meta={"amended": "34449e84251e wording only: aphorism replaced with a plain statement, claim unchanged"},
     name="What is allowed onto the write path of every session on a machine",
     payload={
         "note":
             "This library runs a hook on every tool call of every agent session on the machine. "
             "That is an unforgiving place for an unsound thing, so this gate exists to stop one "
-            "travelling there quietly.\n\n"
-            "It is GREEN, for the first time, and it is worth recording HOW — because neither debt "
-            "was paid. Both dissolved when information-not-exclusion changed what the system "
-            "claims: mcp-writes-settle-late was a hole in a mutex, and there is no mutex left "
-            "anywhere for it to be a hole in; cursor-settles-late lived in an adapter that was "
-            "deleted rather than verified. A debt is a deviation from the system's own claims. "
-            "Changing the claims, out loud, in the spec, with the user driving, is a legitimate "
-            "way for a debt to die — quietly weakening the claims to launder a debt is not, and "
-            "the difference is whether the change is written where the next reader must see it. "
-            "It is: SPEC.md says detection-not-prevention on every path, as the design.\n\n"
-            "It went RED for a few minutes on 2026-07-22 and should not have. A debt was filed for "
-            "the map's blindness to subagents, and the blindness is real — but whether anything "
-            "unsound TRAVELS through it is an open behavioural question, not a known defect. See "
-            "retract-the-subagent-debt. The near-miss is worth keeping in front of this gate: the "
-            "temptation was to admit a proved MECHANISM rather than a proved HARM, and a gate that "
-            "reddens on a mechanism nobody has seen fire is a gate its reader learns to wave "
-            "through. What guards that question now is a hypothesis with a falsifier, which is "
-            "where an open question belongs.",
+            "travelling there quietly.\n\nIt is GREEN, for the first time, and it is worth "
+            "recording HOW — because neither debt was paid. Both dissolved when "
+            "information-not-exclusion changed what the system claims: mcp-writes-settle-late "
+            "was a hole in a mutex, and there is no mutex left anywhere for it to be a hole in; "
+            "cursor-settles-late lived in an adapter that was deleted rather than verified. A "
+            "debt is a deviation from the system's own claims. Changing the claims, out loud, "
+            "in the spec, with the user driving, is a legitimate way for a debt to die — "
+            "quietly weakening the claims to launder a debt is not, and the difference is "
+            "whether the change is written where the next reader must see it. It is: SPEC.md "
+            "says detection-not-prevention on every path, as the design.\n\nIt went RED for a "
+            "few minutes on 2026-07-22 and should not have. A debt was filed for the map's "
+            "blindness to subagents, and the blindness is real — but whether anything unsound "
+            "TRAVELS through it is an open behavioural question, not a known defect. See "
+            "retract-the-subagent-debt. The near-miss is worth keeping in front of this gate: "
+            "the temptation was to admit a proved MECHANISM rather than a proved HARM, and a "
+            "gate that reddens on a mechanism nobody has seen fire is a gate its reader learns "
+            "to ignore. What guards that question now is a hypothesis with a falsifier, which "
+            "is where an open question belongs.",
     },
     links={"admits": ["cursor-settles-late", "mcp-writes-settle-late"]},
 )
