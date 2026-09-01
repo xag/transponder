@@ -26,8 +26,20 @@ CLAUDE = os.path.join(os.path.dirname(__file__), "..", "transponder", "hooks", "
 
 
 def run_hook(script, payload):
+    """Run one hook call and return its result with `.stdout` holding WHAT THE AGENT WAS
+    TOLD.
+
+    Until 2026-09-01 that was literally the hook's stdout. Delivery then moved to the
+    courier — this library posts, and one adapter hands the text to the model at the next
+    seam — so the same question is now asked of the session's mailbox. The tests below are
+    about what an agent learns, not about which pipe carried it, so they are unchanged.
+    """
     res = subprocess.run([sys.executable, script], input=json.dumps(payload),
                          capture_output=True, text=True, timeout=60)
+    from courier import mail
+    posted = mail.take(str(payload.get("session_id") or ""))
+    if posted:
+        res.stdout = (res.stdout or "") + mail.render(posted)
     return res
 
 
@@ -195,14 +207,16 @@ def test_a_missing_flight_recorder_costs_the_tape_not_the_courier(repo, tmp_path
     scope.declare(repo, "A", ["api/**"], "the rate limiter")
 
     env_ = dict(os.environ, TRANSPONDER_DISABLED="0", TRANSPONDER_DIR=os.environ["TRANSPONDER_DIR"],
-                PYTHONPATH=str(stub))
+                COURIER_DIR=os.environ["COURIER_DIR"], PYTHONPATH=str(stub))
     payload = {"hook_event_name": "PreToolUse", "tool_name": "Edit",
                "tool_input": {"file_path": os.path.join(repo, "api", "x.py")},
                "cwd": repo, "session_id": "B"}
     res = subprocess.run([sys.executable, CLAUDE], input=json.dumps(payload), env=env_,
                          capture_output=True, text=True)
     assert res.returncode == 0
-    assert "NOT THE ONLY AGENT" in res.stdout, (
+    from courier import mail
+    said = mail.render(mail.take("B"))
+    assert "NOT THE ONLY AGENT" in said, (
         "with no recorder installed, the courier went quiet entirely")
 
 
@@ -282,7 +296,7 @@ def test_the_remedy_is_copy_pasteable(repo):
 
     claude_prompt(repo, "A")
     claude_edit(repo, "A", "a.txt")
-    out = json.loads(claude_prompt(repo, "A").stdout)["hookSpecificOutput"]["additionalContext"]
+    out = claude_prompt(repo, "A").stdout
     call = out[out.index("declare_work("):].strip()
     ast.parse(call)                                   # raises if the snippet does not parse
 

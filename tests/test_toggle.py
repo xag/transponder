@@ -30,12 +30,21 @@ def switchable(repo, tmp_path, monkeypatch):
 
 
 def _edit(repo, session="B", path="a.txt"):
-    return subprocess.run(
+    """One PreToolUse call, with `.stdout` holding WHAT THE AGENT WAS TOLD — which since
+    2026-09-01 is the courier's mailbox rather than this hook's stdout. The switch these
+    tests are about is transponder's own, and it works the same way: armed, nothing is
+    posted, so nothing is delivered."""
+    res = subprocess.run(
         [sys.executable, CLAUDE],
         input=json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Edit",
                           "tool_input": {"file_path": os.path.join(repo, path)},
                           "cwd": repo, "session_id": session}),
         capture_output=True, text=True, timeout=60)
+    from courier import mail
+    posted = mail.take(session)
+    if posted:
+        res.stdout = (res.stdout or "") + mail.render(posted)
+    return res
 
 
 def test_the_switch_silences_a_session_that_is_already_running(switchable):

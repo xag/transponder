@@ -78,9 +78,25 @@ def address_for(kind: str, repo: str = "", to: str = "") -> str:
 
 def send(sender: str, body: str, kind: str = "channel", repo: str = "", to: str = "") -> dict:
     """Post a message. The SYSTEM stamps who sent it and what they hold — an assertion about the
-    map ('I have released api/**') can then be checked against the map instead of believed."""
+    map ('I have released api/**') can then be checked against the map instead of believed.
+
+    A `direct` message goes to the COURIER (2026-09-01). Direct was always the only kind
+    PUSHED into a recipient, and pushing is delivery: one mechanism in the estate owns it,
+    knows which seams carry text to a model, and can be switched off in one place. Channel
+    and broadcast stay here — nobody is served them, an agent asks for the room, and a feed
+    is not a delivery.
+    """
     if not body.strip():
         return {"status": "empty"}
+    if kind == "direct" and to:
+        try:
+            from courier import mail
+        except ImportError:
+            return {"status": "undeliverable"}
+        stamped = (f"{render_from(sender)}\n{body.strip()}" if sender != to else body.strip())
+        posted = mail.post(to, "transponder", stamped)
+        return {"status": posted.get("status"), "id": posted.get("id"),
+                "address": f"direct:{to}"}
     address = address_for(kind, repo, to)
     msg = {"id": uuid.uuid4().hex[:12], "at": env.now(), "from": sender, "kind": kind,
            "address": address, "from_scope": scope.scope_of(sender), "body": body.strip()}
@@ -159,6 +175,18 @@ def unread(reader: str, repo: str = "", kinds: tuple[str, ...] = ("direct",),
     if mark and out:
         _mark(reader, {m["id"] for m in out})
     return out
+
+
+def render_from(sender: str) -> str:
+    """The one line that says who is talking, and what the MAP says they hold — the
+    anti-hearsay device, kept when the body moved to the courier: an agent can assert
+    anything about the map in prose, so the map's own answer travels beside it."""
+    if sender == "transponder":
+        return "from the transponder:"
+    held = scope.scope_of(sender) or []
+    return (f"from agent {sender}"
+            + (f" (they hold: {', '.join(held)})" if held else " (they hold nothing)")
+            + ":")
 
 
 def render(msg: dict) -> str:

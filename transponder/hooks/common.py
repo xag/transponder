@@ -169,11 +169,11 @@ def post(victim: str, repo: str, note: str) -> None:
     messages.send(sender="transponder", body=note, kind="direct", repo=repo, to=victim)
 
 
-def collect(session: str, repo: str) -> list[str]:
-    """Take delivery of what was addressed TO this agent — direct only, which is the whole line
-    between the courier and a feed. Channel and broadcast traffic is never pushed; an agent that
-    wants the room calls `messages()` and asks."""
-    return [messages.render(m) for m in messages.unread(session, repo, kinds=("direct",))]
+# `collect` is gone (2026-09-01). Taking delivery was this library's for as long as it
+# also carried the letters; the courier carries them now and hands them to the model at
+# every seam, so a drain here would be a second reader racing the first for the same mail.
+# What remains transponder's is the pull-only FEED — channel and broadcast, asked for
+# through `messages()` — which nobody is served and which is not delivery.
 
 
 def remember_head(session: str, repo: str, head: str | None) -> None:

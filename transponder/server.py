@@ -155,9 +155,18 @@ def _tell_the_holders(repo: str, asker: str, intent: str, conflicts: list[dict])
         holder = c.get("session")
         if not holder or holder == asker:
             continue
-        recent = [m for m in messages.unread(holder, repo, kinds=("direct",), mark=False)
-                  if m.get("from") == "transponder" and asker in m.get("body", "")
-                  and env.now() - m.get("at", 0) < 600]
+        # The anti-siren check, against the courier's mailbox — `direct` moved there on
+        # 2026-09-01 and this read was left pointing at an empty store, which turned a
+        # retrying asker into exactly the siren the dedupe exists to prevent (caught by
+        # this repo's own test the same hour). The WINDOW is transponder's judgment and
+        # stays here: ten minutes, after which a still-waiting asker may say so again.
+        try:
+            from courier import mail
+            recent = [m for m in mail.take(holder, consume=False)
+                      if m.get("producer") == "transponder" and asker in m.get("body", "")
+                      and env.now() - m.get("at", 0) < 600]
+        except ImportError:
+            recent = []
         if recent:
             continue                      # they already have this letter and have not read it yet
         messages.send(

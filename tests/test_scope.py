@@ -233,7 +233,9 @@ def test_the_holder_is_told_that_someone_wanted_its_region(repo):
     for _ in range(3):
         server.declare_work(repo, "B", ["api/handlers/**"], "adding a handler")
 
-    got = messages.unread("A", repo, kinds=("direct",), mark=False)
+    # `direct` is the courier's since 2026-09-01; pull it from there, unconsumed
+    from courier import mail
+    got = [{"body": m["body"]} for m in mail.take("A", consume=False)]
     wanted = [m for m in got if "SOMEONE WANTS YOUR REGION" in m["body"]]
     assert wanted, "the holder was never told anyone asked for its region"
     assert len(wanted) == 1, f"a retrying asker became a siren: {len(wanted)} notices"

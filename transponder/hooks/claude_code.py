@@ -71,36 +71,44 @@ _NOTES: list[str] = []
 
 
 def _say(msg: str) -> None:
-    """Queue a note for the agent. It is NOT printed.
+    """Queue a note for this agent. Posted at the end of the call, never printed.
 
     Plain stdout on PreToolUse/PostToolUse/Stop goes to Claude Code's DEBUG LOG — not the model,
-    not even the transcript. This was `print(msg)` for the whole life of v2, which means the
-    courier has been talking to a log file: no agent on this machine has ever received the
-    shared-checkout intro, a heads-up, or a violation report. It was not a delivery that
-    degraded — it never arrived, and nothing in the library could tell, because a hook's stdout
-    looks identical whether someone reads it or not.
+    not even the transcript. This was `print(msg)` for the whole life of v2, which means no agent
+    on this machine ever received the shared-checkout intro, a heads-up, or a violation report.
+    Silence and success looked identical from in here, which is the whole argument for one
+    delivery mechanism that somebody watches.
 
-    `hookSpecificOutput.additionalContext` is the channel that reaches the model without blocking
-    the call, which keeps the one rule this library will not break: nothing is ever refused.
+    Since 2026-09-01 the envelope is the courier's business and so is the timing. What this
+    library still owns is the JUDGMENT: what is worth saying to an agent about the map.
 
-    Its TIMING is a real cost, not a footnote. Context from PreToolUse is delivered next to the
-    TOOL RESULT — after the write has landed. No non-blocking pre-execution channel exists in this
-    harness; the only thing that reaches a model before its tool runs is exit 2, which refuses the
-    call. The pre-write warning was deleted rather than reworded (see common.py where heads_up
-    stood): every write is now witnessed after the fact, which is what this library could always
-    honestly claim.
+    The timing is a real cost, not a footnote, and it does not change: context from PreToolUse
+    arrives next to the TOOL RESULT, after the write has landed. No non-blocking pre-execution
+    channel exists in this harness, so every write is witnessed after the fact — which is what
+    this library could always honestly claim.
     """
     _NOTES.append(msg)
 
 
-def _emit(event: str) -> None:
-    """Hand the queued notes to the model. Silence when there is nothing to say — an information
-    layer that speaks on every call teaches its reader to skim."""
-    if not _NOTES:
+def _emit(event: str, session: str = "") -> None:
+    """Hand the queued notes to the courier, which puts them in front of the agent at its
+    next seam. Silence when there is nothing to say — an information layer that speaks on
+    every call teaches its reader to skim.
+
+    This function used to write the JSON envelope itself. It no longer knows there is an
+    envelope: one adapter in the estate owns that, having been given the finding by this
+    library's own scars."""
+    if not _NOTES or not session:
+        _NOTES.clear()
         return
-    json.dump({"hookSpecificOutput": {"hookEventName": event,
-                                      "additionalContext": "\n\n".join(_NOTES)}}, sys.stdout)
-    sys.stdout.write("\n")
+    try:
+        from courier import mail
+    except ImportError:
+        _NOTES.clear()
+        return          # no courier, no delivery — never a broken turn
+    for note in _NOTES:
+        mail.post(session, "transponder", note)
+    _NOTES.clear()
 
 
 def _record() -> None:
@@ -156,9 +164,8 @@ def pre_tool_use(payload: dict) -> None:
     common.note_write(session, payload.get("tool_name") or "", payload.get("tool_input") or {})
     if note := common.shared_note(session, payload.get("cwd") or ""):
         _say(note)
-    for repo in scope.in_play():
-        for note in common.collect(session, repo):
-            _say(note)
+    # No drain here any more: the courier delivers what was posted to this session, at
+    # this very seam, and a second reader would race it for the same letters.
 
 
 def stop(payload: dict) -> None:
@@ -185,8 +192,6 @@ def _read_side(session: str) -> None:
     UserPromptSubmit reaches the model BEFORE it acts. An agent coming back to a region somebody
     wrote in should learn it before its first tool call, not beside the result of one."""
     for repo in scope.in_play():
-        for note in common.collect(session, repo):
-            _say(note)
         if note := common.drift_note(session, repo):
             _say(note)
 
@@ -404,9 +409,9 @@ def main() -> None:
         # half-delivered warning beats a swallowed one.
         print(f"transponder hook error ({type(e).__name__}: {e}) — this call went unwitnessed",
               file=sys.stderr)
-        _emit(event)
+        _emit(event, str(payload.get("session_id") or ""))
         sys.exit(0)
-    _emit(event)
+    _emit(event, str(payload.get("session_id") or ""))
 
 
 if __name__ == "__main__":

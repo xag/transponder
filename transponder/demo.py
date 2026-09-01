@@ -248,7 +248,13 @@ def main(argv: list[str] | None = None) -> int:
             # the channel too, which a hook never delivers, because that is what an agent has to ASK
             # for. The demo is a participant rather than a prop: it is the victim, so it receives
             # what a victim receives, live, while you are watching.
-            got_mail = common.collect(session, repo)
+            # Direct mail is the courier's since 2026-09-01, so the demo reads it where a
+            # real agent's hook now reads it. Same act, one address further along.
+            try:
+                from courier import mail as _courier
+                got_mail = [_courier.render([m]) for m in _courier.take(session)]
+            except ImportError:
+                got_mail = []
             got_chat = [messages.render(m) for m in
                         messages.unread(session, repo, kinds=("channel", messages.BROADCAST))]
             if fresh := got_mail + got_chat:
