@@ -92,6 +92,10 @@ def declare_work(repo: str, session_id: str, paths: list[str], doing: str,
 
     RETURNS GREEN LIGHT, and then the region is yours and you can work.
 
+    A session holds ONE claim, across every checkout. Declaring again REPLACES it: a second
+    declare_work in another repo, or with fewer paths, silently drops everything the first one
+    held. To widen what you hold, use extend_work() instead.
+
     Or it returns NOT CLEAR, naming who holds the overlap, what they are doing, when they expect
     to be free, and which regions are open right now. Then do one of three things, and say which:
       1. take different work — the answer lists what is free;
