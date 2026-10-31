@@ -1,6 +1,12 @@
+import os
 import subprocess
 
 import pytest
+
+# Importing transponder.server installs the recorder at once, into ~/.transponder/flight: without
+# this, every run of the suite files its tapes among the real sessions'. Set here, before any test
+# module imports the server; a test that wants a tape turns it on with a directory of its own.
+os.environ["TRANSPONDER_FLIGHT"] = "0"
 
 
 @pytest.fixture
