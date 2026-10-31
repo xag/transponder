@@ -43,6 +43,7 @@ BOUNDARY = fr.Boundary(
             "git_paths_between",   # the commit that swept another agent's work
             "git_tracked_dirs",    # what is free, for the conflict answer
             "git_log_between", "git_commit_exists",   # the drift check
+            "git",                 # transponder.branch: the worktree, the rebase, the landing
         ]),
     ],
     constants=[(scope, "LEASE_SECONDS")],

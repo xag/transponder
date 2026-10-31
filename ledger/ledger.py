@@ -1428,6 +1428,52 @@ DECISIONS = [
                                   "the one thing declare has always refused (a conflicting claim is "
                                   "not registered either)"}),
          ]),
+
+    Node(id="not-clear-may-branch", kind="decision",
+         name="A fourth answer to NOT CLEAR: keep the work, in a worktree of your own on a local "
+              "branch, and land it when the region frees",
+         links={"rests_on": ["agree-before-the-work", "filesystem-is-the-namespace"]},
+         payload={"rationale":
+                  "The three choices all stop the work the agent came to do: do something else, "
+                  "ask, or idle until the holder finishes. The owner asked for a fourth (#16): "
+                  "create a local repo on a branch and keep going. SPEC already called per-agent "
+                  "worktrees strictly better than sharing one checkout; this makes one at the "
+                  "moment of the conflict instead of only when a harness set it up beforehand.\n\n"
+                  "`python -m transponder.branch open` adds a git worktree BESIDE the checkout "
+                  "(`<checkout>.<session>`), on `transponder/<session>`, from HEAD. Its paths are "
+                  "a different region in the one filesystem namespace, so the agent declares there "
+                  "and is green. `land` rebases the branch onto the checkout's branch inside the "
+                  "worktree, then fast-forwards the checkout, then removes the worktree and deletes "
+                  "the branch. It refuses to fast-forward until the session holds every path the "
+                  "branch changed plus `.git/index` in the original, and prints the declare_work "
+                  "call and the wait command when it does not.\n\n"
+                  "Landing is a write into the shared checkout, so it is agreed the same way as "
+                  "every other write: by the agent, with declare_work, before it happens. The "
+                  "helper checks; it does not declare.\n\n"
+                  "The branch is local and short-lived. It is never pushed and is deleted when it "
+                  "lands, so a solo repo still has one line of history on main."},
+         children=[
+             Node(id="alt-worktree-inside-the-checkout", kind="alternative",
+                  name="Put the worktree inside the checkout (as harnesses do, under a dot folder)",
+                  payload={"why": "a claim on the checkout's `**` then covers the worktree, so the "
+                                  "agent is NOT CLEAR again in the place it went to escape it"}),
+             Node(id="alt-a-full-clone", kind="alternative",
+                  name="Clone the checkout instead of adding a worktree",
+                  payload={"why": "landing then needs a fetch between two repos and the objects "
+                                  "are duplicated; a worktree shares refs, so the original sees "
+                                  "the branch the moment it is committed"}),
+             Node(id="alt-merge-in-the-original", kind="alternative",
+                  name="Land with a merge in the original checkout",
+                  payload={"why": "a conflict would then be resolved in the shared checkout, "
+                                  "holding a region somebody else may be waiting for, and leave a "
+                                  "merge commit. Rebasing in the worktree resolves it where only "
+                                  "its author works, and the fast-forward keeps history a line"}),
+             Node(id="alt-land-declares-for-you", kind="alternative",
+                  name="Have `land` declare the paths itself and land in one step",
+                  payload={"why": "a write into a shared checkout agreed by a script rather than "
+                                  "by the agent making it, which is the one act "
+                                  "agree-before-the-work puts in the agent's hands"}),
+         ]),
 ]
 
 HYPOTHESES = [
@@ -1703,6 +1749,25 @@ HYPOTHESES = [
                                    "because the honest failure mode of this change is that it "
                                    "adds noise and buys nothing, and that must be findable "
                                    "without anyone remembering to look."}),
+         ]),
+
+    Node(id="hyp-a-branch-gets-landed", kind="hypothesis",
+         links={"tests": ["not-clear-may-branch"]},
+         name="A session that branches instead of waiting lands the branch before it stops",
+         payload={"claim": "Branching trades idle time for a rebase at the end. The bet is that "
+                           "the rebase is usually small and agents finish the landing; the "
+                           "alternative is that the overlap that made the region NOT CLEAR is "
+                           "the same overlap that makes the rebase conflict, and branches are "
+                           "opened and abandoned, which is lost work with extra steps.",
+                  "cadence": "per checkout, whenever someone looks at its branches"},
+         children=[
+             Node(id="kill-branches-are-left-behind", kind="falsification",
+                  payload={"claim": "A `transponder/*` branch, or a `<checkout>.<session>` "
+                                    "worktree beside a checkout, older than a day.",
+                           "note": "Readable from git alone (`git branch --list 'transponder/*'`, "
+                                   "`git worktree list`), with no tape: transponder.branch runs "
+                                   "outside the recorded server, so the branch it leaves is the "
+                                   "only evidence there is."}),
          ]),
 ]
 

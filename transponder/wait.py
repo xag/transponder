@@ -1,7 +1,7 @@
 """Wait for a region to come free, without spinning — `python -m transponder.wait --repo R --paths p`
 
-An agent told NOT CLEAR has three honest moves: take different work, ask its human, or wait. This
-is how it waits. Launched as a BACKGROUND task, it polls the map and exits the moment nothing
+An agent told NOT CLEAR has four honest moves: take different work, ask its human, wait, or branch
+(transponder.branch). This is how it waits. Launched as a BACKGROUND task, it polls the map and exits the moment nothing
 overlaps the paths any more — and a harness that notices a background task exiting is the only
 thing in existence that can wake an agent, so exiting IS the notification.
 

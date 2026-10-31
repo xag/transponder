@@ -230,3 +230,15 @@ def git_commit_exists(repo: str, sha: str) -> bool:
     if not sha:
         return False
     return _run(["git", "cat-file", "-e", f"{sha}^{{commit}}"], cwd=repo) is not None
+
+
+def git(repo: str, *args: str) -> tuple[bool, str]:
+    """Run one git command for transponder.branch, which WRITES (a worktree, a rebase, a merge):
+    whether it worked, and what git said — stderr included, because when a rebase stops on a
+    conflict, git's own words are the instructions the agent needs."""
+    try:
+        res = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, timeout=120,
+                             stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError) as e:
+        return False, str(e)
+    return res.returncode == 0, (res.stdout + res.stderr).strip()

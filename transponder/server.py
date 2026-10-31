@@ -97,10 +97,11 @@ def declare_work(repo: str, session_id: str, paths: list[str], doing: str,
     held. To widen what you hold, use extend_work() instead.
 
     Or it returns NOT CLEAR, naming who holds the overlap, what they are doing, when they expect
-    to be free, and which regions are open right now. Then do one of three things, and say which:
+    to be free, and which regions are open right now. Then do one of four things, and say which:
       1. take different work — the answer lists what is free;
       2. ask your human — they may know the other work is abandoned, or want you to go ahead;
-      3. wait — say out loud that you are waiting, and poll rather than spin.
+      3. wait — say out loud that you are waiting, and poll rather than spin;
+      4. branch — do the same work in a worktree of your own, and land it when the region frees.
     Nothing stops you writing anyway. Nothing here ever blocks a tool call. But nobody is watching
     for collisions any more, so a write into somebody's declared region is simply lost work that
     neither of you will find out about until it hurts.
@@ -146,6 +147,10 @@ def declare_work(repo: str, session_id: str, paths: list[str], doing: str,
         " ".join(f'\"{p}\"' for p in paths[:4]),
         "    launched as a background task — it exits when the region frees, and your harness will",
         "    tell you when it does. Then declare_work() again.",
+        "  * or branch, and keep the work: a git worktree of your own on a local branch, landed",
+        "    when the region frees. It costs a rebase onto the holder's work at the end, so it",
+        "    pays when your overlap with them is small:",
+        f"        python -m transponder.branch open --repo \"{repo}\" --session \"{session_id}\"",
     ]
     if soonest:
         out.append(f"    (expect roughly {max(1, soonest // 60)} minutes)")

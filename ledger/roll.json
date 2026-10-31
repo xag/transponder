@@ -155,6 +155,16 @@
     "digest": "91f48162dd38"
   },
   {
+    "path": "hyp-a-branch-gets-landed",
+    "kind": "hypothesis",
+    "digest": "f0707f069614"
+  },
+  {
+    "path": "hyp-a-branch-gets-landed/kill-branches-are-left-behind",
+    "kind": "falsification",
+    "digest": "a924135d138e"
+  },
+  {
     "path": "hyp-a-parents-fan-out-is-its-own-coordination",
     "kind": "hypothesis",
     "digest": "22af1d40fa88"
@@ -373,6 +383,31 @@
     "path": "nobody-is-named-unless-the-tool-named-the-file/alt-tell-the-victim-anyway-hedged",
     "kind": "alternative",
     "digest": "6054e45c079e"
+  },
+  {
+    "path": "not-clear-may-branch",
+    "kind": "decision",
+    "digest": "497ab8ded45e"
+  },
+  {
+    "path": "not-clear-may-branch/alt-a-full-clone",
+    "kind": "alternative",
+    "digest": "baddfd7a9f10"
+  },
+  {
+    "path": "not-clear-may-branch/alt-land-declares-for-you",
+    "kind": "alternative",
+    "digest": "b7896f15aea7"
+  },
+  {
+    "path": "not-clear-may-branch/alt-merge-in-the-original",
+    "kind": "alternative",
+    "digest": "5a35844edd7d"
+  },
+  {
+    "path": "not-clear-may-branch/alt-worktree-inside-the-checkout",
+    "kind": "alternative",
+    "digest": "e2fd03f55d32"
   },
   {
     "path": "observe-do-not-predict",

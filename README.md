@@ -44,6 +44,8 @@ The hooks run on four events — `PreToolUse` (hand over anything waiting), `Use
 
 Blocked and want to wait? `python -m transponder.wait --repo R --paths p` in the background exits when the region frees — and a harness noticing a background task exit is the only thing that can wake an agent.
 
+Blocked and would rather keep working? `python -m transponder.branch open --repo R --session S` makes a git worktree beside `R` on a local branch; declare there and work. When the region frees, `python -m transponder.branch land --repo R --session S` rebases the branch in the worktree, fast-forwards `R` once you hold the paths it changed plus `.git/index`, and removes the worktree and the branch.
+
 Scopes are filesystem paths — a file, a subtree (`api/**`), or `**` for the whole checkout; spelled relative to `repo` and canonicalised, so two spellings of one file cannot be held twice. `.git/index` is an ordinary path: reserve it around a commit so `git add -A` cannot sweep a neighbour's unfinished work into yours.
 
 ## What an agent sees
