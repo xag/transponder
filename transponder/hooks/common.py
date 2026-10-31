@@ -34,7 +34,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shlex
 import subprocess
+import sys
 
 from transponder import env, messages, scope, witness
 
@@ -281,6 +283,11 @@ def shared_note(session: str, cwd: str = "") -> str | None:
         "Reserve `.git/index` around a commit and release it after: `git add -A` sweeps up every",
         "dirty file in the checkout, including a neighbour's half-finished work.",
     ]
+    repo = _shown(cwd) if cwd and not scope.why_not_a_checkout(cwd) else "REPO"
+    out += _no_tools(_shell("channel", repo=repo, session_id=session),
+                     _shell("declare_work", repo=repo, session_id=session, paths=["WHAT", "YOU", "WRITE"],
+                            doing="what you are actually doing", minutes=30),
+                     f"{shlex.quote(CLI_PYTHON)} -m transponder.cli --help    # every verb, as the tools have them")
     return "\n".join(out)
 
 
@@ -331,6 +338,29 @@ def _scope_shown(repo: str, resource: str) -> str:
     if scope.canon(base) == scope.canon(repo):
         return "the whole checkout"
     return _rel(repo, _shown(base)) + ("/**" if sub else "")
+
+
+# The python that runs these hooks, as the one a shell runs `transponder.cli` with: the hooks run on
+# the venv's pythonw, which prints nothing, and its python beside it is the same install.
+CLI_PYTHON = os.path.join(os.path.dirname(sys.executable),
+                          os.path.basename(sys.executable).replace("pythonw", "python")).replace("\\", "/")
+
+
+def _shell(verb: str, **args) -> str:
+    """The same call as a command for a POSIX shell (Claude Code's Bash tool). A session that was
+    already running when the transponder was registered never loads its MCP server, and its hooks
+    still reach it: this is the form of the remedy it can run. A list is the flag's values."""
+    words = [shlex.quote(CLI_PYTHON), "-m", "transponder.cli", verb]
+    for name, value in args.items():
+        words.append(f"--{name}")
+        words += [shlex.quote(str(v)) for v in value] if isinstance(value, list) else [shlex.quote(str(value))]
+    return " ".join(words)
+
+
+def _no_tools(*commands: str) -> list[str]:
+    return ["", "No `declare_work` in your tool list? Your session started before the transponder was "
+            "registered: its hooks reach you and its tools never will. The same calls run in your shell:",
+            ""] + [f"    {c}" for c in commands]
 
 
 def _rel(repo: str, path: str) -> str:
@@ -504,6 +534,7 @@ def undeclared_note(session: str, repo: str) -> str | None:
                 f"    extend_work(repo={where!r},",
                 f"                session_id={session!r},",
                 f"                add={shown[:3]!r})"]
+        out += _no_tools(_shell("extend_work", repo=where, add=shown[:3], session_id=session))
     else:
         out += ["One call, answered immediately, and it is what makes you visible to whoever "
                 "arrives next:", "",
@@ -512,6 +543,8 @@ def undeclared_note(session: str, repo: str) -> str | None:
                 f"                 paths={shown[:3]!r},",
                 "                 doing='what you are actually doing',",
                 "                 minutes=30)"]
+        out += _no_tools(_shell("declare_work", repo=where, session_id=session, paths=shown[:3],
+                                doing="what you are actually doing", minutes=30))
     return "\n".join(out)
 
 

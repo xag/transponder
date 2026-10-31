@@ -1474,6 +1474,44 @@ DECISIONS = [
                                   "by the agent making it, which is the one act "
                                   "agree-before-the-work puts in the agent's hands"}),
          ]),
+
+    Node(id="the-verbs-have-a-shell-face", kind="decision",
+         name="Every MCP verb is also a command, and the courier hands it to sessions that cannot see "
+              "the tools",
+         links={"rests_on": ["the-ask-goes-where-it-can-be-answered", "agree-before-the-work"]},
+         payload={"rationale":
+                  "A Claude Code session loads its MCP servers once, at startup. Measured on "
+                  "2026-10-31: a server added with `claude mcp add` while a session ran never "
+                  "appeared in it, and no process was spawned for it. So a session already running "
+                  "when the transponder is registered can never call declare_work, however long it "
+                  "runs, and the owner asked for those sessions to be bound too. Its hooks do reach "
+                  "it: the harness's documentation says direct edits to hooks in settings files are "
+                  "picked up by its file watcher, and the hook script is read from the checkout on "
+                  "every call.\n\n"
+                  "So `transponder.cli` exposes each tool as a verb of the same name, its flags read "
+                  "off the server function's own signature and its help off the docstring, so the "
+                  "two faces cannot drift; a test holds the set of verbs equal to the set of tools. "
+                  "And both notes that ask an agent to declare (the intro and the undeclared-writes "
+                  "note) carry the shell form beside the tool form, every argument filled in as the "
+                  "tool form has it, for the Bash tool every session has.\n\n"
+                  "It says both forms to every session because the hook cannot tell which session "
+                  "lacks the tools: nothing in a hook's payload lists them."},
+         children=[
+             Node(id="alt-resume-every-session", kind="alternative",
+                  name="Tell the owner to resume each older session",
+                  payload={"why": "works, and is a chore per session that the owner has to "
+                                  "remember; the hooks already reach every one of them"}),
+             Node(id="alt-speak-only-to-the-toolless", kind="alternative",
+                  name="Give the shell form only to sessions that lack the tools",
+                  payload={"why": "no hook payload says what tools a session has. Inferring it "
+                                  "from a session never having called one is wrong for every "
+                                  "session that has the tools and has not used them yet, which "
+                                  "is the session the intro is for"}),
+             Node(id="alt-a-console-script", kind="alternative",
+                  name="A `transponder` console script in the venv",
+                  payload={"why": "shorter to type, and absent until the venv is synced again: "
+                                  "`python -m transponder.cli` runs on any install the hooks run on"}),
+         ]),
 ]
 
 HYPOTHESES = [
@@ -1768,6 +1806,29 @@ HYPOTHESES = [
                                    "`git worktree list`), with no tape: transponder.branch runs "
                                    "outside the recorded server, so the branch it leaves is the "
                                    "only evidence there is."}),
+         ]),
+
+    Node(id="hyp-an-older-session-declares-from-its-shell", kind="hypothesis",
+         links={"tests": ["the-verbs-have-a-shell-face"]},
+         name="A session that started before the transponder was registered gets its notes and "
+              "declares from its shell",
+         payload={"claim": "Two bets. The hooks reach a session that was running when they were "
+                           "wired (the harness documents a file watcher; "
+                           "the-off-switch-cannot-need-a-shell says the opposite, that hooks are "
+                           "snapshotted at session start, and one of them is wrong). And an "
+                           "agent with no transponder tools, handed a filled-in command, runs it "
+                           "instead of skipping a note whose first form it cannot call.",
+                  "cadence": "whenever a session older than the transponder's registration is "
+                             "running"},
+         children=[
+             Node(id="kill-older-session-unreached", kind="falsification",
+                  payload={"claim": "A session started before `toggle on` writes into a checkout "
+                                    "and its hooks record nothing (no `wrote/` or `noted/` file "
+                                    "for its session id)."}),
+             Node(id="kill-older-session-never-declares", kind="falsification",
+                  payload={"claim": "A session with no transponder.server process under it is "
+                                    "delivered the undeclared-writes note twice and never "
+                                    "appears on the map."}),
          ]),
 ]
 

@@ -297,7 +297,8 @@ def test_the_remedy_is_copy_pasteable(repo):
     claude_prompt(repo, "A")
     claude_edit(repo, "A", "a.txt")
     out = claude_prompt(repo, "A").stdout
-    call = out[out.index("declare_work("):].strip()
+    start = out.index("declare_work(")
+    call = out[start:out.index(")", start) + 1]       # the shell form of the same call follows it
     ast.parse(call)                                   # raises if the snippet does not parse
 
     assert "\\\\" not in call, (
