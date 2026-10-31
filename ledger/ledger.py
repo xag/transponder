@@ -603,9 +603,16 @@ DECISIONS = [
                                   "witness"}),
          ]),
 
+    # SUPERSEDED 2026-10-31 by the-off-switch-is-a-file-every-hook-reads. Its premise that a harness
+    # snapshots hooks at session start was measured false; the switch it chose stands, for the
+    # reason the new entry gives. Kept whole, so the wrong reason is not believed again.
     Node(id="the-off-switch-cannot-need-a-shell", kind="decision",
-         name="The off switch is an MCP tool and a file — never a command in a terminal",
-         payload={"rationale":
+         meta={"amended": "0a18c2acbc20 the rationale is verbatim; what was added is that it is "
+                          "superseded, and by what"},
+         name="[SUPERSEDED] The off switch is an MCP tool and a file — never a command in a terminal",
+         payload={"status": "superseded",
+                  "superseded_by": "the-off-switch-is-a-file-every-hook-reads",
+                  "rationale":
                   "This lock sits on the write path of every agent session on the machine, and it "
                   "has now taken the machine down four times (#4, #7, #10, #11). The switch that turns "
                   "it off is therefore load-bearing, and it has exactly two hard requirements — both "
@@ -638,6 +645,37 @@ DECISIONS = [
                                   "Kept as an override (it beats the file in BOTH directions, so a "
                                   "test can re-enable the lock without deleting the machine's panic "
                                   "file), and `toggle status` reports it precisely because it wins"}),
+         ]),
+
+    Node(id="the-off-switch-is-a-file-every-hook-reads", kind="decision",
+         name="The off switch is an MCP tool and a file that every hook reads on every call",
+         links={"supersedes": ["the-off-switch-cannot-need-a-shell"]},
+         payload={"rationale":
+                  "The two requirements of the entry this supersedes stand: the switch must not "
+                  "need a shell, because a misfiring hook may be refusing the shell, so the surface "
+                  "is `lock_disable`/`lock_enable`; and it must reach sessions already running, "
+                  "because the stuck ones are the ones to free. `lock_enable` still re-wires the "
+                  "hooks, because 'on' with no hooks wired guards nothing.\n\n"
+                  "What changed is why the switch is a file and not a config edit. That entry said "
+                  "a harness snapshots its hooks at session start, so removing them from "
+                  "settings.json reaches no running session. Measured 2026-10-31 on Claude Code, in "
+                  "a session started two days earlier: a hook added to ~/.claude/settings.json on an "
+                  "event the session had hooks for, and one on an event it had none for, each fired "
+                  "at its next matching tool call, and once removed neither fired again. The "
+                  "harness's docs say its file watcher picks up direct edits to hooks. So a config "
+                  "edit does reach running sessions. The file "
+                  "stays the switch because the hook reads it itself on every call, whichever "
+                  "settings file wired the hook and whatever the harness does with edits."},
+         children=[
+             Node(id="alt-unwire-as-the-switch", kind="alternative",
+                  name="Turn it off by removing the hooks from settings.json",
+                  payload={"why": "reaches running Claude Code sessions (measured), but only the "
+                                  "settings file it edits, and only in a harness that watches it. "
+                                  "Kept as `off --unwire`, not as the mechanism"}),
+             Node(id="alt-env-var-as-the-switch", kind="alternative",
+                  name="TRANSPONDER_DISABLED as the only switch",
+                  payload={"why": "a session cannot be handed an env var it was not launched with. "
+                                  "Kept as an override that beats the file both ways"}),
          ]),
 
     Node(id="tray-is-a-face-not-an-authority", kind="decision",
@@ -1809,6 +1847,8 @@ HYPOTHESES = [
          ]),
 
     Node(id="hyp-an-older-session-declares-from-its-shell", kind="hypothesis",
+         meta={"amended": "d2725ccdaf18 the claim is verbatim; what was added is the measurement "
+                          "of its first bet"},
          links={"tests": ["the-verbs-have-a-shell-face"]},
          name="A session that started before the transponder was registered gets its notes and "
               "declares from its shell",
@@ -1819,7 +1859,12 @@ HYPOTHESES = [
                            "agent with no transponder tools, handed a filled-in command, runs it "
                            "instead of skipping a note whose first form it cannot call.",
                   "cadence": "whenever a session older than the transponder's registration is "
-                             "running"},
+                             "running",
+                  "measured": "2026-10-31, the first bet held: hooks added to "
+                              "~/.claude/settings.json, on an event the session had and on one it "
+                              "had none for, fired at the next tool call of a session started two "
+                              "days earlier, and stopped once removed. The-off-switch-cannot-need-a-shell was the "
+                              "wrong one, and is superseded. The second bet is still open."},
          children=[
              Node(id="kill-older-session-unreached", kind="falsification",
                   payload={"claim": "A session started before `toggle on` writes into a checkout "

@@ -361,7 +361,7 @@ def lock_disable(reason: str, clear_held_locks: bool = True) -> str:
     An information layer cannot wedge the machine the way the old lock could, but it can be wrong,
     noisy, or slow, and off must still mean off. It writes `~/.transponder/DISABLED`, which every hook
     checks on every call, so running sessions go quiet on their next tool use — no restart, no
-    settings.json edit (a harness snapshots its hooks at startup and cannot see one anyway).
+    settings.json edit.
 
     `clear_held_locks` also drops the claim files, so the map is empty when it comes back on.
     `reason` is written into the switch file for whoever finds it later.

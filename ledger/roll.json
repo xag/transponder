@@ -177,7 +177,7 @@
   {
     "path": "hyp-an-older-session-declares-from-its-shell",
     "kind": "hypothesis",
-    "digest": "1268f9ea59f4"
+    "digest": "d2725ccdaf18"
   },
   {
     "path": "hyp-an-older-session-declares-from-its-shell/kill-older-session-never-declares",
@@ -647,7 +647,7 @@
   {
     "path": "the-off-switch-cannot-need-a-shell",
     "kind": "decision",
-    "digest": "d290927a3791"
+    "digest": "0a18c2acbc20"
   },
   {
     "path": "the-off-switch-cannot-need-a-shell/alt-env-var-only",
@@ -658,6 +658,21 @@
     "path": "the-off-switch-cannot-need-a-shell/alt-uninstall-the-hooks",
     "kind": "alternative",
     "digest": "f32ab07fa066"
+  },
+  {
+    "path": "the-off-switch-is-a-file-every-hook-reads",
+    "kind": "decision",
+    "digest": "62a69ed9f59d"
+  },
+  {
+    "path": "the-off-switch-is-a-file-every-hook-reads/alt-env-var-as-the-switch",
+    "kind": "alternative",
+    "digest": "76e6a7d59797"
+  },
+  {
+    "path": "the-off-switch-is-a-file-every-hook-reads/alt-unwire-as-the-switch",
+    "kind": "alternative",
+    "digest": "7a0b538deb59"
   },
   {
     "path": "the-ticket-must-survive-the-shell",

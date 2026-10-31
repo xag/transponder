@@ -4,9 +4,10 @@ The predecessor of this module switched off a LOCK that had taken the machine do
 (#4, #7, #10, #11). The lock is gone — nothing here refuses a tool call any more — but the switch
 stays, because an information layer can still be wrong, noisy, or slow, and off must mean off:
 
-  It must reach a session that is ALREADY RUNNING. A harness snapshots its hooks when it starts, so
-  removing them from settings.json does nothing for sessions already up. Only a file on disk,
-  checked on every hook call, gets through: `~/.transponder/DISABLED` (env.disabled). Instant.
+  It must reach a session that is ALREADY RUNNING. A file on disk that every hook checks on every
+  call does: `~/.transponder/DISABLED` (env.disabled), at each session's next event. (Removing the
+  hooks from settings.json reaches running Claude Code sessions too, measured 2026-10-31, but only
+  the settings file it edits; the file is read by the hook itself.)
 
   The real surface is the MCP tools (`lock_disable` / `lock_enable` in transponder/server.py), so a
   running agent can reach it without a terminal. This CLI is the same two functions for a human.

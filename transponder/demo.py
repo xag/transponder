@@ -23,11 +23,11 @@ asked not to give the game away.
 
 It never touches a real repo: the checkout is a fresh temp directory unless you pass --repo.
 
-THE GOTCHA, and it will cost you the run if you miss it: a harness snapshots WHICH hooks and events
-are wired when the session starts (it re-reads the script itself on every call). So a session older
-than the last `python -m transponder.toggle on` can be missing whole events — which is not a
-hypothetical: UserPromptSubmit was routed in the adapter and never wired for the whole life of v2,
-so it never fired once.
+THE GOTCHA, and it will cost you the run if you miss it: an event that is not wired never fires. That
+is not a hypothetical: UserPromptSubmit was routed in the adapter and never wired for the whole life
+of v2, so it never fired once. Claude Code picks up hooks added to settings.json in sessions already
+running (measured 2026-10-31, on an event the session had and on one it had none for), so a session
+older than the last `python -m transponder.toggle on` is wired too.
 
 The number worth watching at the end is how many agents READ the channel message. Pull-only means a
 channel nobody asks for is a channel that does not exist, whatever the tests say.
@@ -230,8 +230,8 @@ def main(argv: list[str] | None = None) -> int:
     print("  that read it concluded a violation was the expected result and duly wrote. That")
     print("  measured nothing. Give it an ordinary-sounding reason to touch the file and see what")
     print("  it does with what the transponder tells it.")
-    print("\n  Use a session started AFTER the last `toggle on` (a harness snapshots which hooks")
-    print("  and events are wired when it starts; the script itself it re-reads every call).")
+    print("\n  Check `python -m transponder.toggle status` says wired: an event that is not")
+    print("  wired never fires.")
     print("\n  I will print here, live, anything addressed to me or said on the channel, and end")
     print("  with whether anyone read my note and whether anything landed in my file.")
     print("=" * 72 + "\n")

@@ -43,9 +43,9 @@ def disabled() -> bool:
     a no-op that blocks nothing.
 
     A file rather than only an env var, and checked on every hook call rather than at install time,
-    because the sessions you most need to free are the ones already running: a harness snapshots
-    its hooks at session start, so editing settings.json cannot reach them and neither can an env
-    var they were launched without. Touching a file can. Uninstalling should never require a
+    because the sessions you most need to free are the ones already running, and an env var they
+    were launched without cannot reach them. Touching a file can, and every hook reads it itself,
+    whichever settings file wired the hook. Uninstalling should never require a
     machine-wide restart of the work it is holding up.
     """
     value = os.getenv("TRANSPONDER_DISABLED")

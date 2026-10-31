@@ -24,6 +24,10 @@ def recorded_scopes(repo, tmp_path, monkeypatch):
     monkeypatch.setenv("TRANSPONDER_FLIGHT", "1")
     flightdir = tmp_path / "flight-scopes"
     monkeypatch.setenv("TRANSPONDER_FLIGHT_DIR", str(flightdir))
+    # Importing transponder.server installs the recorder for the whole process, into the directory
+    # set then, and an install is idempotent: without this, a test that imported the server earlier
+    # leaves this one recording elsewhere and finding no tape here.
+    fr.uninstall()
     scope_flight.install()
     try:
         scope.declare(repo, "A", ["api/**"], "the rate limiter")   # 0 granted

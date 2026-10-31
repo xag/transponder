@@ -29,7 +29,7 @@ covered) wiring all four events — `python -m transponder.toggle on` writes it.
 `mcp__.*` so MCP calls are witnessed; they are never, under any circumstance, refused.
 
 Kill switch: `~/.transponder/DISABLED` (see env.disabled) makes every event a no-op, including in
-sessions that already snapshotted their hooks. An informer cannot wedge the machine the way the
+sessions already running. An informer cannot wedge the machine the way the
 lock could, but it can be wrong or noisy, and off must still mean off, everywhere, instantly.
 """
 
