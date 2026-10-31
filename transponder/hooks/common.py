@@ -285,9 +285,10 @@ def shared_note(session: str, cwd: str = "") -> str | None:
     ]
     repo = _shown(cwd) if cwd and not scope.why_not_a_checkout(cwd) else "REPO"
     out += _no_tools(_shell("channel", repo=repo, session_id=session),
-                     _shell("declare_work", repo=repo, session_id=session, paths=["WHAT", "YOU", "WRITE"],
+                     _shell("declare_work", repo=repo, session_id=session, paths=["PATH_YOU_WILL_WRITE"],
                             doing="what you are actually doing", minutes=30),
                      f"{shlex.quote(CLI_PYTHON)} -m transponder.cli --help    # every verb, as the tools have them")
+    out += ["", "--paths takes one or more files or folders."]
     return "\n".join(out)
 
 
@@ -358,9 +359,10 @@ def _shell(verb: str, **args) -> str:
 
 
 def _no_tools(*commands: str) -> list[str]:
-    return ["", "No `declare_work` in your tool list? Your session started before the transponder was "
-            "registered: its hooks reach you and its tools never will. The same calls run in your shell:",
-            ""] + [f"    {c}" for c in commands]
+    return ["", "If `declare_work` is not in your tool list, your session started before the transponder "
+            "was registered and will never get its tools. These commands exist for that case: they make "
+            "the same calls from your shell, so you can still declare your work and be seen by the other "
+            "sessions.", ""] + [f"    {c}" for c in commands]
 
 
 def _rel(repo: str, path: str) -> str:
